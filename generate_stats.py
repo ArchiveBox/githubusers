@@ -130,21 +130,27 @@ EXCLUDE_PATH_PATTERNS = (
     "/bash-utils/",
 )
 
-# File-path substrings excluded from line counts (vendored / generated /
-# locked / binary files). Matched as substring against the file path
-# reported by `git log --numstat`. Keep these as substrings so paths like
-# "frontend/node_modules/foo.js" or "src/dist/bundle.js" match.
-EXCLUDE_FILE_SUBSTRINGS = (
+# Path-component (directory name) exclusions. We split the file path on
+# '/' and exclude if ANY segment exactly matches one of these names —
+# anchored matching avoids false positives like 'layout/' triggering on
+# 'out/', or 'rebuild/' triggering on 'build/'.
+EXCLUDE_PATH_COMPONENTS = frozenset({
     # Vendored / dependency directories
-    "node_modules/", "vendor/", "bower_components/", "third_party/",
-    ".venv/", "venv/", "env/", "site-packages/", "__pycache__/",
-    # Build / dist / generated output
-    "dist/", "build/", "target/", "out/",
-    ".next/", ".nuxt/", ".turbo/", ".parcel-cache/",
-    "coverage/", "htmlcov/", ".pytest_cache/", ".mypy_cache/",
-    ".tox/", ".eggs/", ".egg-info/",
+    "node_modules", "vendor", "bower_components", "third_party",
+    ".venv", "venv", "site-packages", "__pycache__",
+    # Build / dist / generated output (anchored so 'rebuild/' is kept)
+    "dist", "build", "target", "out",
+    ".next", ".nuxt", ".turbo", ".parcel-cache",
+    "coverage", "htmlcov", ".pytest_cache", ".mypy_cache",
+    ".tox", ".eggs",
     # ArchiveBox snapshot dirs (huge data dumps)
-    "/archive/", "/snapshots/",
+    "archive", "snapshots",
+})
+
+# Glob-like suffix exclusions for directory names (matches whole segments).
+# These can't be in the frozenset above because they're suffix patterns.
+EXCLUDE_PATH_COMPONENT_SUFFIXES = (
+    ".egg-info",
 )
 
 # File-name (basename) exact matches — lock files etc.
@@ -271,12 +277,17 @@ def _is_excluded_file(path: str) -> bool:
     """Return True if the file path matches an exclusion pattern."""
     if not path:
         return False
-    # Substring (directory) match
-    for sub in EXCLUDE_FILE_SUBSTRINGS:
-        if sub in path:
+    # Path-component match: any /-delimited segment in EXCLUDE_PATH_COMPONENTS
+    # or matching one of the suffix patterns (e.g. *.egg-info).
+    segments = path.split("/")
+    for seg in segments:
+        if seg in EXCLUDE_PATH_COMPONENTS:
             return True
-    # Basename exact match
-    base = path.rsplit("/", 1)[-1]
+        for suf in EXCLUDE_PATH_COMPONENT_SUFFIXES:
+            if seg.endswith(suf):
+                return True
+    # Basename exact match (lock files etc.)
+    base = segments[-1]
     if base in EXCLUDE_FILE_BASENAMES:
         return True
     # Extension match (lowercase, support compound suffixes like .min.js)
