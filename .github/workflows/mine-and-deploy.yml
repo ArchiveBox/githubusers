@@ -1,0 +1,120 @@
+name: Mine GitHub user stats + deploy to Cloudflare
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      user:
+        description: "Single GitHub login to mine (skips the full users.txt loop)."
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - "generate_stats.py"
+      - "stats_template.html"
+      - "cloudflare/**"
+      - ".github/workflows/mine-and-deploy.yml"
+
+concurrency:
+  group: mine-and-deploy
+  cancel-in-progress: false
+
+jobs:
+  mine-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # for appending new users to users.txt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_MINING_TOKEN || github.token }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install gh CLI
+        run: |
+          type -p gh >/dev/null || (
+            sudo apt-get update -qq && sudo apt-get install -y gh
+          )
+
+      - name: Authenticate gh
+        env:
+          GH_TOKEN: ${{ secrets.GH_MINING_TOKEN }}
+        run: echo "$GH_TOKEN" | gh auth login --with-token
+
+      - name: Determine target users
+        id: targets
+        working-directory: .
+        env:
+          INPUT_USER: ${{ inputs.user }}
+        run: |
+          set -e
+          mkdir -p cloudflare/public
+          # Build the list of users we'll mine THIS run.
+          if [ -n "$INPUT_USER" ]; then
+            echo "Single-user mine: $INPUT_USER"
+            # Persist new users into users.txt so future scheduled runs
+            # include them.
+            if ! grep -qiE "^${INPUT_USER}$" cloudflare/users.txt; then
+              echo "$INPUT_USER" >> cloudflare/users.txt
+              echo "added=true" >> $GITHUB_OUTPUT
+            fi
+            echo "$INPUT_USER" > /tmp/targets.txt
+          else
+            echo "Full mine of users.txt"
+            grep -vE '^\s*(#|$)' cloudflare/users.txt > /tmp/targets.txt
+          fi
+          # Pre-stage pirate's enhanced version
+          if [ -f stats.html ]; then
+            cp stats.html cloudflare/public/pirate.html
+          fi
+          cat /tmp/targets.txt
+
+      - name: Mine each user (with progressive deploys)
+        working-directory: .
+        env:
+          NO_COLOR: "1"
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          while IFS= read -r user || [ -n "$user" ]; do
+            user="${user%%#*}"
+            user="${user//[[:space:]]/}"
+            [ -z "$user" ] && continue
+            [ "$user" = "pirate" ] && continue
+            echo "::group::Mining @$user"
+            python3 generate_stats.py --user "$user" \
+              --no-search-commits \
+              --max-api-fetches 1500 \
+              || { echo "::warning::mining @$user failed"; continue; }
+            if [ -f "stats_$user.html" ]; then
+              cp "stats_$user.html" "cloudflare/public/$user.html"
+            fi
+            echo "::endgroup::"
+            # Progressive deploy: ship after each user so single-user mines
+            # become visible as soon as they're done. Full runs cumulatively
+            # update the live deployment.
+            (cd cloudflare && npx --yes wrangler@latest deploy) || \
+              echo "::warning::interim deploy failed for $user"
+          done < /tmp/targets.txt
+
+      - name: Commit added users.txt entries
+        if: steps.targets.outputs.added == 'true'
+        working-directory: cloudflare
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add users.txt
+          git diff --staged --quiet || git commit -m "Add ${{ inputs.user }} to users.txt [skip ci]"
+          git push || echo "::warning::push failed (no commit permission?)"
+
+      - name: Final deploy
+        working-directory: cloudflare
+        run: npx --yes wrangler@latest deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -1,0 +1,10 @@
+# GitHub usernames to mine and publish at githubusers.archivebox.io/<login>.
+# One per line. Lines starting with # are ignored. Empty lines are ignored.
+#
+# `pirate` is intentionally NOT in this list — pirate's enhanced dashboard
+# (with career timeline, manual canonical names, etc.) is built locally and
+# copied into public/pirate.html.
+
+cowpig
+monadoid
+seanmcguire12

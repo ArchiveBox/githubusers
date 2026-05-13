@@ -1,0 +1,18 @@
+name = "githubusers-archivebox-io"
+compatibility_date = "2026-05-01"
+main = "worker/index.ts"
+
+# Custom domain — the zone (archivebox.io) must already be on this CF
+# account. `custom_domain = true` auto-creates the DNS + cert.
+routes = [
+  { pattern = "githubusers.archivebox.io", custom_domain = true },
+]
+
+# Static asset binding: serves files in ./public directly. /<username>
+# resolves to <username>.html via auto-trailing-slash; misses fall through
+# to the Worker code, which renders a "mining…" page for new users.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "none"
+html_handling = "auto-trailing-slash"
