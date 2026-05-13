@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Nick Sweeting — Git Contribution Stats</title>
+<title>GitHub contribution stats</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
   :root {
@@ -770,6 +770,45 @@
 // Parse the embedded JSON data block.
 const DATA = JSON.parse(document.getElementById("DATA").textContent);
 
+// Empty-account short-circuit — show a friendly message instead of an
+// empty dashboard shell when the user has no public activity at all.
+if (DATA.user && DATA.user.profile &&
+    (DATA.totals || {}).commits === 0 &&
+    (DATA.totals || {}).prs === 0 &&
+    (DATA.totals || {}).issues === 0 &&
+    (DATA.totals || {}).stars === 0 &&
+    DATA.mining_status === "complete") {
+  const u = DATA.user;
+  const p = u.profile || {};
+  document.body.innerHTML = `
+    <style>
+      .empty-card {
+        max-width: 540px; margin: 80px auto; padding: 40px;
+        text-align: center; border: 1px solid var(--border);
+        border-radius: 12px; background: var(--panel);
+      }
+      .empty-card img { width: 80px; height: 80px; border-radius: 50%;
+                       border: 1px solid var(--border); }
+      .empty-card h1 { font-size: 22px; margin: 16px 0 4px; }
+      .empty-card .handle { color: var(--muted); font-size: 14px; }
+      .empty-card .msg { color: var(--muted); line-height: 1.6;
+                        font-size: 13px; margin-top: 20px; }
+      .empty-card a { color: var(--accent); }
+    </style>
+    <div class="empty-card">
+      ${p.avatar_url ? `<img src="${p.avatar_url}" alt="">` : ""}
+      <h1>${u.name || u.login}</h1>
+      <div class="handle"><a href="https://github.com/${u.login}">@${u.login}</a></div>
+      <div class="msg">
+        This account has no public contributions yet.<br>
+        ${p.created_at ? `Joined GitHub <strong>${p.created_at.slice(0,10)}</strong>.` : ""}
+        ${p.public_repos === 0 ? "No public repositories." : ""}
+      </div>
+    </div>`;
+  // Bail out — none of the section rendering applies.
+  throw new Error("empty-account-shortcircuit");
+}
+
 // Company → color lookup, built from the jobs list.
 const COMPANY_COLOR = {};
 for (const j of ((DATA.annotations || {}).jobs || [])) {
@@ -826,6 +865,7 @@ document.addEventListener("scroll", hideTip, true);
 
 // ---------- header ----------
 document.getElementById("hdr-name").textContent = DATA.user.name;
+document.title = `${DATA.user.name || DATA.user.login} (@${DATA.user.login}) — GitHub contribution stats`;
 document.getElementById("hdr-handle").innerHTML =
   `<a href="https://github.com/${DATA.user.login}">@${DATA.user.login}</a>`;
 if (DATA.totals.first_day && DATA.totals.last_day) {
