@@ -89,20 +89,25 @@ async function handleRefresh(
     }
   }
 
-  // Dedup: don't re-dispatch within ~6 hours of the most recent one for
-  // this user. Uses Workers Cache API — no KV/DO binding needed.
+  // Dedup: for non-force calls (loading page after initial visit), don't
+  // re-dispatch within ~6 hours of the most recent one for this user.
+  // Force calls (manual "Refresh stats" button) bypass dedup — GitHub
+  // Actions' own concurrency.group keeps at most one queued run, which
+  // is plenty of protection against rapid double-clicks.
   const cache = caches.default;
   const dedupKey = new Request(
     `https://internal-dedup.invalid/dispatch/${user}`,
   );
-  const existing = await cache.match(dedupKey);
-  if (existing) {
-    return json({
-      ok: true,
-      user,
-      status: "already_running",
-      dispatched_at: existing.headers.get("X-Dispatched-At") ?? null,
-    }, 202);
+  if (!force) {
+    const existing = await cache.match(dedupKey);
+    if (existing) {
+      return json({
+        ok: true,
+        user,
+        status: "already_running",
+        dispatched_at: existing.headers.get("X-Dispatched-At") ?? null,
+      }, 202);
+    }
   }
 
   const repo = env.GH_REPO ?? "ArchiveBox/githubusers";
