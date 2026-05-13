@@ -215,66 +215,10 @@ jobs:
           git diff --staged --quiet || git commit -m "Add ${{ inputs.user }} to users.txt [skip ci]"
           git push || echo "::warning::push failed (no commit permission?)"
 
-      # Rebuild the homepage user list. Shows two groups:
-      #   - Deployed: a dashboard HTML already exists in cloudflare/public/
-      #   - Queued:   listed in users.txt but no HTML yet (next run will mine)
-      # The Queued set surfaces in-progress / future mines so visitors know
-      # what's coming without having to dig through CI runs.
-      - name: Regenerate user index
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-          pub = Path("cloudflare/public")
-          deployed = sorted(
-              (p.stem for p in pub.glob("*.html")
-               if p.stem not in {"index", "404"}),
-              key=str.lower,
-          )
-          # Read users.txt for queued users.
-          queued: list[str] = []
-          ut = Path("cloudflare/users.txt")
-          if ut.exists():
-              for line in ut.read_text().splitlines():
-                  line = line.split("#", 1)[0].strip()
-                  if not line:
-                      continue
-                  if line in deployed:
-                      continue
-                  queued.append(line)
-          queued.sort(key=str.lower)
-
-          def row_deployed(u: str) -> str:
-              suffix = " — Nick Sweeting (enhanced)" if u == "pirate" else ""
-              return (f'      <li class="ready"><a href="/{u}">/{u}</a>'
-                      f'{suffix}</li>')
-
-          def row_queued(u: str) -> str:
-              return (f'      <li class="mining"><span>/{u}</span>'
-                      f' <em>· queued/mining</em></li>')
-
-          rows = [row_deployed(u) for u in deployed]
-          if queued:
-              rows.append(
-                  '      <li class="section-hdr">Queued for next CI run</li>')
-              rows += [row_queued(u) for u in queued]
-
-          html = (pub / "index.html").read_text()
-          html = re.sub(
-              r"<ul>.*?</ul>",
-              "<ul>\n" + "\n".join(rows) + "\n    </ul>",
-              html,
-              count=1,
-              flags=re.S,
-          )
-          html = html.replace(
-              'Want to add yourself? <a href="https://github.com/ArchiveBox/githubusers/edit/main/cloudflare/users.txt">Open a PR on users.txt</a>.',
-              'Want your dashboard here? Just visit <code>/&lt;your-login&gt;</code> — mining kicks off automatically.',
-          )
-          (pub / "index.html").write_text(html)
-          print(f"Wrote index.html: {len(deployed)} deployed, "
-                f"{len(queued)} queued")
-          PY
+      # Deploy users.txt as a static asset so the Worker's dynamic /
+      # handler can read it to build the queued/mining list.
+      - name: Stage users.txt as a public asset
+        run: cp cloudflare/users.txt cloudflare/public/users.txt
 
       - name: Final deploy
         working-directory: cloudflare

@@ -31,6 +31,15 @@ export default {
       return handleProgress(req, env, url);
     }
 
+    // -- Dynamic homepage: render live deployed + queued user lists -------
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      try {
+        return await handleIndex(env, url);
+      } catch (e) {
+        // Fall through to the static index.html in /public on any error.
+      }
+    }
+
     // -- Static assets ----------------------------------------------------
     const assetResp = await env.ASSETS.fetch(req);
     if (assetResp.status !== 404) return assetResp;
@@ -416,6 +425,137 @@ async function handleStatus(
     recent_log: recentLog,
     progress,
   });
+}
+
+
+// Dynamic homepage. Reads /users.txt (also deployed as a static asset
+// by CI) for the canonical list of users we want dashboards for, then
+// probes /{user}.html via the ASSETS binding to see which are ready vs
+// still queued/mining. Output is cached in Workers Cache for 30s so
+// repeated visits don't fan out to N internal asset probes each time.
+async function handleIndex(env: Env, url: URL): Promise<Response> {
+  const cache = caches.default;
+  const cacheKey = new Request("https://internal-index.invalid/v1");
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
+  // Read users.txt from the deployed assets.
+  const probeBase = new URL(url.toString());
+  probeBase.search = "";
+  const usersTxtUrl = new URL(probeBase.toString());
+  usersTxtUrl.pathname = "/users.txt";
+  let users: string[] = [];
+  try {
+    const r = await env.ASSETS.fetch(new Request(usersTxtUrl.toString()));
+    if (r.ok) {
+      const txt = await r.text();
+      users = txt.split("\n")
+        .map((l) => l.split("#", 1)[0].trim())
+        .filter((l) => l.length > 0);
+    }
+  } catch {}
+
+  // Add pirate (intentionally not in users.txt — built locally).
+  if (!users.includes("pirate")) users.unshift("pirate");
+
+  // Probe each user's /<u>.html for deploy status in parallel.
+  const states = await Promise.all(users.map(async (u) => {
+    const probeUrl = new URL(probeBase.toString());
+    probeUrl.pathname = `/${u}.html`;
+    try {
+      const r = await env.ASSETS.fetch(new Request(probeUrl.toString()));
+      return { user: u, deployed: r.status === 200 };
+    } catch {
+      return { user: u, deployed: false };
+    }
+  }));
+
+  const deployed = states
+    .filter((s) => s.deployed)
+    .map((s) => s.user)
+    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  const queued = states
+    .filter((s) => !s.deployed)
+    .map((s) => s.user)
+    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+  const html = indexPage(deployed, queued);
+  const resp = new Response(html, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "public, max-age=30",
+    },
+  });
+  // Stash a clone for future hits (the response itself can only be
+  // consumed once; cache.put is fine with the cloned Response).
+  await cache.put(cacheKey, resp.clone());
+  return resp;
+}
+
+
+function indexPage(deployed: string[], queued: string[]): string {
+  const escape = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const deployedRows = deployed.map((u) => {
+    const suffix = u === "pirate" ? " — Nick Sweeting (enhanced)" : "";
+    return `      <li class="ready"><a href="/${escape(u)}">/${escape(u)}</a>${suffix}</li>`;
+  }).join("\n");
+  const queuedRows = queued.map((u) =>
+    `      <li class="mining"><span>/${escape(u)}</span> <em>· queued / mining</em></li>`
+  ).join("\n");
+  const queuedSection = queued.length
+    ? `\n      <li class="section-hdr">Queued for next CI run (${queued.length})</li>\n${queuedRows}`
+    : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>githubusers.archivebox.io</title>
+<style>
+  html, body {
+    background: #0d1117; color: #e6edf3;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0; padding: 0; min-height: 100%;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 48px 24px; }
+  h1 { font-size: 24px; margin: 0 0 8px; }
+  p { color: #8b949e; line-height: 1.5; }
+  a { color: #58a6ff; }
+  ul { list-style: none; padding: 0; }
+  ul li { padding: 8px 0; border-bottom: 1px solid #21262d; }
+  ul li.mining { color: #8b949e; }
+  ul li.mining em {
+    color: #d29922; font-style: normal; font-size: 11px;
+    background: #1f1810; border: 1px solid #443322;
+    padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+  }
+  ul li.section-hdr {
+    color: #6e7681; font-size: 11px;
+    border: 0; padding: 16px 0 4px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  code { background: #21262d; padding: 2px 6px; border-radius: 4px; font-size: 90%; }
+  .meta { font-size: 11px; color: #6e7681; margin-top: 24px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>githubusers.archivebox.io</h1>
+    <p>
+      Precomputed contribution dashboards for selected GitHub users.
+      Navigate to <code>/&lt;login&gt;</code> for any user listed below
+      (or any other login — mining auto-triggers on first visit).
+    </p>
+    <ul>
+${deployedRows}${queuedSection}
+    </ul>
+    <p class="meta">
+      ${deployed.length} deployed · ${queued.length} queued · refreshed every 30s
+    </p>
+  </div>
+</body>
+</html>`;
 }
 
 
