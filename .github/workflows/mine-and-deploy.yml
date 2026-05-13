@@ -215,6 +215,43 @@ jobs:
           git diff --staged --quiet || git commit -m "Add ${{ inputs.user }} to users.txt [skip ci]"
           git push || echo "::warning::push failed (no commit permission?)"
 
+      # Rebuild the homepage user list from the set of dashboards we
+      # are actually about to deploy, so /<login> entries match reality
+      # (and users added via the self-serve flow show up automatically).
+      - name: Regenerate user index
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          pub = Path("cloudflare/public")
+          users = sorted(
+              (p.stem for p in pub.glob("*.html")
+               if p.stem not in {"index", "404"}),
+              key=str.lower,
+          )
+          rows = []
+          for u in users:
+              if u == "pirate":
+                  rows.append(f'      <li><a href="/{u}">/{u}</a> — Nick Sweeting (enhanced)</li>')
+              else:
+                  rows.append(f'      <li><a href="/{u}">/{u}</a></li>')
+          html = (pub / "index.html").read_text()
+          html = re.sub(
+              r"<ul>.*?</ul>",
+              "<ul>\n" + "\n".join(rows) + "\n    </ul>",
+              html,
+              count=1,
+              flags=re.S,
+          )
+          # Update the "open a PR" footer to mention the self-serve flow.
+          html = html.replace(
+              'Want to add yourself? <a href="https://github.com/ArchiveBox/githubusers/edit/main/cloudflare/users.txt">Open a PR on users.txt</a>.',
+              'Want your dashboard here? Just visit <code>/&lt;your-login&gt;</code> — mining kicks off automatically.',
+          )
+          (pub / "index.html").write_text(html)
+          print(f"Wrote index.html with {len(users)} users: {users}")
+          PY
+
       - name: Final deploy
         working-directory: cloudflare
         run: npx --yes wrangler@latest deploy
