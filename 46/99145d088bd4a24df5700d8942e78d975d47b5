@@ -1,0 +1,28 @@
+stats_template.html
+  s_18da96ec8c0224::t_5e400bc5e36107 599-614
+  s_18da96ec8c0224::t_7ad5a11dc2896e 777
+  s_18da96ec8c0224::t_9a45757ee71bd7 1550-1552
+  s_18da96ec8c0224::t_cce9f78a262875 1516-1517,1519-1549,1553-1559
+cloudflare/worker/index.ts
+  s_18da96ec8c0224::t_2598e928e85519 66-90,92-93
+  s_18da96ec8c0224::t_3d0c5ab5277e35 557-562
+.github/workflows/mine-and-deploy.yml
+  s_18da96ec8c0224::t_565f96096c9a17 92,101-116,122
+  s_18da96ec8c0224::t_b02a799ccea60c 58-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "4699145d088bd4a24df5700d8942e78d975d47b5",
+  "prompts": {},
+  "sessions": {
+    "s_18da96ec8c0224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "106f0a9a-2d47-4cb2-9490-c81a93b36371",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
