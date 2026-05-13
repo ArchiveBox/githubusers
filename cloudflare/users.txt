@@ -10,3 +10,13 @@ monadoid
 seanmcguire12
 nsnx
 FiloSottile
+
+# Popular GitHub users (prepopulated)
+simonw
+steveklabnik
+antirez
+sindresorhus
+mitchellh
+gaearon
+tj
+substack
