@@ -11,8 +11,14 @@ routes = [
 # Static asset binding: serves files in ./public directly. /<username>
 # resolves to <username>.html via auto-trailing-slash; misses fall through
 # to the Worker code, which renders a "mining…" page for new users.
+#
+# run_worker_first = true means every request hits the Worker first
+# (which can then dispatch to env.ASSETS.fetch for static files). Needed
+# for the dynamic / handler — otherwise CF serves the cached static
+# index.html from the edge and the Worker never gets invoked.
 [assets]
 directory = "./public"
 binding = "ASSETS"
 not_found_handling = "none"
 html_handling = "auto-trailing-slash"
+run_worker_first = true

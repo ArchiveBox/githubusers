@@ -35,7 +35,8 @@ export default {
     if (url.pathname === "/" || url.pathname === "/index.html") {
       try {
         return await handleIndex(env, url);
-      } catch (e) {
+      } catch (e: any) {
+        console.error("handleIndex failed:", e?.message, e?.stack);
         // Fall through to the static index.html in /public on any error.
       }
     }
