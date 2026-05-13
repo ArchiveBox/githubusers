@@ -188,11 +188,12 @@ async function handleStatus(
     return json({ error: "invalid user" }, 400);
   }
   const repo = env.GH_REPO ?? "ArchiveBox/githubusers";
-  // Fetch the most recent workflow_dispatch run. Since concurrency.group
-  // serializes mines, the latest in_progress (or most recent overall)
-  // is most likely the one for this user.
+  // Fetch the most recent workflow run regardless of event (dispatch /
+  // push / schedule) — they all run the same mining job, and the
+  // concurrency.group serializes them so the latest run is always the
+  // most relevant.
   const r = await fetch(
-    `https://api.github.com/repos/${repo}/actions/runs?per_page=5&event=workflow_dispatch`,
+    `https://api.github.com/repos/${repo}/actions/runs?per_page=5`,
     {
       headers: {
         Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
@@ -205,7 +206,11 @@ async function handleStatus(
     return json({ error: "gh api failed", status: r.status }, 502);
   }
   const data = await r.json() as any;
-  const run = (data.workflow_runs ?? [])[0];
+  // Prefer an in_progress / queued run; fall back to most recent overall.
+  const runs = data.workflow_runs ?? [];
+  const run = runs.find((x: any) => x.status === "in_progress")
+           ?? runs.find((x: any) => x.status === "queued")
+           ?? runs[0];
   if (!run) {
     return json({ ok: false, status: "no_runs" });
   }

@@ -2395,6 +2395,12 @@ def report_progress(phase: str, message: str = "", **extra) -> None:
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {PROGRESS_TOKEN}",
+                # Cloudflare WAF blocks empty User-Agents — give it a
+                # real-looking one.
+                "User-Agent": (
+                    "generate_stats.py "
+                    "(github.com/ArchiveBox/githubusers)"
+                ),
             },
         )
         urllib.request.urlopen(req, timeout=5).read()
