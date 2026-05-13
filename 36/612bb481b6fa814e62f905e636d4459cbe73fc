@@ -1,0 +1,20 @@
+generate_stats.py
+  s_18da96ec8c0224::t_e692d47df76103 280-284,286-290
+  s_18da96ec8c0224::t_bb1894ee9c29b5 133-137,139-145,147-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "36612bb481b6fa814e62f905e636d4459cbe73fc",
+  "prompts": {},
+  "sessions": {
+    "s_18da96ec8c0224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "106f0a9a-2d47-4cb2-9490-c81a93b36371",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
