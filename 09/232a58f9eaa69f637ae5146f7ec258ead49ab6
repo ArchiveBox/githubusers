@@ -1,0 +1,19 @@
+.github/workflows/mine-and-deploy.yml
+  s_18da96ec8c0224::t_08f18646524ae1 204-208,216-217,219,223-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "09232a58f9eaa69f637ae5146f7ec258ead49ab6",
+  "prompts": {},
+  "sessions": {
+    "s_18da96ec8c0224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "106f0a9a-2d47-4cb2-9490-c81a93b36371",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
