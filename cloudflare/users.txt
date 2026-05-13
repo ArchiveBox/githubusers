@@ -21,23 +21,83 @@ gaearon
 tj
 substack
 
-# @Monadical-SAS public members
+# @Monadical-SAS members (all visible via authed API)
+a9tavako
+afreydev
+atgonzalezz
+devops-monadical
+elo-siema
+jbrd-monadical
+jdcaballerov
+jordanmonadical
 josezy
+juanArias8
+kevdevg
+kevincardonag
+MiltonLn
 Monadical-Inc
+nikitalokhmachev-ai
+NotDavidKaufman
+SaraBMo
+sebasmonadical
 tito
 yamijuan
 
-# @browserbase public members
+# @browserbase members (all visible via authed API)
+1fge
+AdamJaggard
+ajmcquilkin
+aq17
+arik-bb
+bbclanker
+bcodell
+beatrizgo
+bkrejci-bb
+chargreezy
+charlypoly
 chrisreadsf
+connor443
+ctinaa
+derekmeegan
+elibingham
+fosmond
+harsehajd
+jay-sahnan
 jordin
+jtoar
+kenziemac7
+kunwar-bot
 Kylejeong2
+liammatteson
+lindsaygils
+maayanalbert
+miguelg719
 nosajio
+pagpeter
+peytoncasper
+pkiv
+rakrm
+rcbrowder
+Regina530
 sameelarif
+sarah-browserbase
+shrey150
+shriyatheunicorn
+shubh24
+socratese
 sophie2chance2
 supremeboxlogos
+suyashguptasg
+syd-shields
+tkattkat
+victlue
 WalkerGriggs
+ziruihao
 
-# @browser-use public members
+# @browser-use members
 Alezander9
 gregpr07
 laithrw
+
+# @ArchiveBox members
+benmuth
