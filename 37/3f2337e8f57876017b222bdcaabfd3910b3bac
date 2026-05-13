@@ -1,0 +1,19 @@
+cloudflare/public/pirate.html
+  s_18da96ec8c0224::t_cec78a124cc19e 5,599-629,634-638,777,783,790-828,863-882,885,1516-1517,1519-1559
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "373f2337e8f57876017b222bdcaabfd3910b3bac",
+  "prompts": {},
+  "sessions": {
+    "s_18da96ec8c0224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "106f0a9a-2d47-4cb2-9490-c81a93b36371",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
