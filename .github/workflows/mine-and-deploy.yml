@@ -201,6 +201,11 @@ jobs:
             done
           }
 
+          # Per-user wallclock cap. Some users have hundreds of repos and
+          # cold-mining them takes forever; bounding to 25min/user keeps
+          # the queue moving (partial data already deployed via the
+          # watcher's interim deploys).
+          USER_TIMEOUT=1500
           while IFS= read -r user || [ -n "$user" ]; do
             user="${user%%#*}"
             user="${user//[[:space:]]/}"
@@ -208,13 +213,15 @@ jobs:
             [ "$user" = "pirate" ] && continue
             echo "::group::Mining @$user"
             # Run mining in the background; watch loop deploys partials.
-            python3 generate_stats.py --user "$user" \
+            timeout --kill-after=30s "$USER_TIMEOUT" python3 \
+              generate_stats.py --user "$user" \
               --no-search-commits \
-              --max-api-fetches 1500 &
+              --max-api-fetches 800 &
             MINE_PID=$!
             watch_and_deploy "$MINE_PID" "$user" &
             WATCH_PID=$!
-            wait "$MINE_PID" || echo "::warning::mining @$user exited non-zero"
+            wait "$MINE_PID" \
+              || echo "::warning::mining @$user exited non-zero (timeout or error)"
             # Stop the watcher and do a final deploy with the final HTML.
             kill "$WATCH_PID" 2>/dev/null || true
             wait "$WATCH_PID" 2>/dev/null || true
