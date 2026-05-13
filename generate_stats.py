@@ -798,7 +798,7 @@ def list_search_commits() -> list[dict]:
         all_items.extend(items)
         time.sleep(0.3)
     CACHE_API.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text(json.dumps(all_items))
+    final_cache.write_text(json.dumps(all_items))
     return all_items
 
 
