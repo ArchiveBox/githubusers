@@ -20,3 +20,24 @@ mitchellh
 gaearon
 tj
 substack
+
+# @Monadical-SAS public members
+josezy
+Monadical-Inc
+tito
+yamijuan
+
+# @browserbase public members
+chrisreadsf
+jordin
+Kylejeong2
+nosajio
+sameelarif
+sophie2chance2
+supremeboxlogos
+WalkerGriggs
+
+# @browser-use public members
+Alezander9
+gregpr07
+laithrw
