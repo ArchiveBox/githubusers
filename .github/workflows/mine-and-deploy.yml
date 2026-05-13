@@ -135,6 +135,11 @@ jobs:
           if [ -f stats.html ]; then
             cp stats.html cloudflare/public/pirate.html
           fi
+          # Stage users.txt as a public asset so the Worker's dynamic /
+          # handler can read it for the queued/mining list. Doing it here
+          # (before the mining loop) means every interim deploy also has
+          # a fresh users.txt available to the homepage.
+          cp cloudflare/users.txt cloudflare/public/users.txt
           echo "Targets:"
           cat /tmp/targets.txt
 
@@ -214,11 +219,6 @@ jobs:
           git add users.txt
           git diff --staged --quiet || git commit -m "Add ${{ inputs.user }} to users.txt [skip ci]"
           git push || echo "::warning::push failed (no commit permission?)"
-
-      # Deploy users.txt as a static asset so the Worker's dynamic /
-      # handler can read it to build the queued/mining list.
-      - name: Stage users.txt as a public asset
-        run: cp cloudflare/users.txt cloudflare/public/users.txt
 
       - name: Final deploy
         working-directory: cloudflare
