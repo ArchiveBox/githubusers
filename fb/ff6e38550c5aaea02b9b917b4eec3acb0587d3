@@ -1,0 +1,19 @@
+cloudflare/users.txt
+  s_18da96ec8c0224::t_7e823934d0914f 23-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "fbff6e38550c5aaea02b9b917b4eec3acb0587d3",
+  "prompts": {},
+  "sessions": {
+    "s_18da96ec8c0224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "106f0a9a-2d47-4cb2-9490-c81a93b36371",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
