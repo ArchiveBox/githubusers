@@ -1328,10 +1328,12 @@ def mine_bare_repo_to_cache(bare: Path) -> int:
     if cf.exists() and cf.stat().st_size > 10:
         return -1  # already mined
     recs = mine_local_repo(bare)
-    # The bare-clone file name encodes the canonical full_name.
+    # The bare-clone file name encodes the canonical full_name as
+    # "{owner}__{name}.git" (see bare_clone_repo). Split on the double
+    # underscore — single split would leave a leading "_" on names.
     raw = bare.name.replace(".git", "")
-    if "_" in raw:
-        owner, name = raw.split("_", 1)
+    if "__" in raw:
+        owner, name = raw.split("__", 1)
         full = f"{owner}/{name}"
     else:
         full = raw
