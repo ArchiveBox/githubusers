@@ -60,14 +60,30 @@ jobs:
       # replaces the assets dir on deploy. Single shared key — every run
       # restores the latest snapshot of all deployed dashboards, adds /
       # refreshes its own user(s), and writes back the full set.
+      #
+      # Exclude committed dashboards (pirate, index, 404) from the cache
+      # so old versions can't overwrite the just-checked-out repo files
+      # when this step restores. We also explicitly re-apply them from
+      # git after the restore (next step) — defends against the case
+      # where the existing cache still contains them from a previous run.
       - name: Restore deployed dashboards
         uses: actions/cache@v4
         with:
           path: |
             cloudflare/public/*.html
+            !cloudflare/public/pirate.html
+            !cloudflare/public/index.html
+            !cloudflare/public/404.html
           key: deployed-htmls-v1-${{ github.run_id }}
           restore-keys: |
             deployed-htmls-v1-
+
+      - name: Re-apply committed dashboards from git
+        run: |
+          git checkout HEAD -- \
+            cloudflare/public/pirate.html \
+            cloudflare/public/index.html \
+            cloudflare/public/404.html
 
       - name: Install gh CLI
         run: |
