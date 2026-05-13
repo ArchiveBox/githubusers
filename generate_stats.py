@@ -355,7 +355,23 @@ def git_remote_url(repo: Path) -> str | None:
 
 def mine_local_repo(repo: Path) -> list[dict]:
     """Return a list of commit records authored by the user in this repo."""
-    author_pattern = r"sweeting\|githubpirate\|pirate@\|nicksweeting"
+    # Build a git --author regex from the configured needles + emails so
+    # mining for arbitrary users (--user X) actually matches their commits,
+    # not pirate's hardcoded identity.
+    _alts: set[str] = set()
+    for n in PIRATE_NEEDLES:
+        s = (n or "").strip()
+        if s:
+            _alts.add(re.escape(s))
+    for e in PIRATE_EMAILS:
+        s = (e or "").strip()
+        if s:
+            _alts.add(re.escape(s))
+    # Always include the GH login itself in case commits use the noreply
+    # form like 511499+pirate@users.noreply.github.com.
+    if GH_LOGIN:
+        _alts.add(re.escape(GH_LOGIN))
+    author_pattern = "\\|".join(sorted(_alts)) or r"$^"  # never-match fallback
 
     # Quick existence check first — git stops walking on first match.
     # HEAD-only is fast on any repo; if no hit, try --all with shorter timeout.
