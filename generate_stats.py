@@ -2364,11 +2364,16 @@ def _collect_all_records() -> list[dict]:
     return all_recs
 
 
-def _render_now() -> dict:
-    """Aggregate from cache and write stats.html. Returns aggregate dict."""
+def _render_now(*, mining_status: str = "complete") -> dict:
+    """Aggregate from cache and write stats.html. Returns aggregate dict.
+    `mining_status` is embedded in the output so the live-mining UI knows
+    when to keep auto-refreshing. Values: 'partial' | 'complete'."""
     all_recs = _collect_all_records()
     merged = dedupe_commits(all_recs)
     agg = aggregate(merged)
+    agg["mining_status"] = mining_status
+    if mining_status != "complete":
+        agg["mining_phase"] = mining_status
     CACHE_AGG.write_text(json.dumps(agg))
     OUTPUT_FILE.write_text(render_html(agg))
     return agg
@@ -2582,6 +2587,10 @@ def main() -> int:
         else:
             print(">> [2/7] Nothing to clone — all accessible repos covered",
                   file=sys.stderr)
+        try:
+            _render_now(mining_status="phase-2-cloned-repos")
+        except Exception:
+            pass
 
     # ---- Phase 3: search/commits discovery -------------------------------
     if not args.no_search_commits:
@@ -2606,6 +2615,10 @@ def main() -> int:
             print(f"  ! search/commits failed: {e}", file=sys.stderr)
 
     # ---- Phase 4: PR & issue search --------------------------------------
+    try:
+        _render_now(mining_status="phase-4-searching-prs")
+    except Exception:
+        pass
     if not args.no_prs:
         print(">> [4/7] Searching PRs + issues by the user ...", file=sys.stderr)
         try:
@@ -2635,6 +2648,11 @@ def main() -> int:
             print(f">> {n} new commits via PR-commits API", file=sys.stderr)
         except Exception as e:
             print(f"  ! per-PR commits fetch failed: {e}", file=sys.stderr)
+
+        try:
+            _render_now(mining_status="phase-5-pr-detail-fetched")
+        except Exception:
+            pass
 
         # ---- Phase 5b: actual commits in PR-only repos -------------------
         # If pirate's PR was merged, his commits are in the upstream repo's
@@ -2683,7 +2701,7 @@ def main() -> int:
               file=sys.stderr)
         # Collect every canonical repo name in our data + every repo in
         # PRs/issues so we can show stars even for issue-only repos.
-        agg = _render_now()
+        agg = _render_now(mining_status="phase-6-fetching-stars")
         repo_names = set(agg["by_repo"].keys())
         n = fetch_stars_for_repos(repo_names, max_fetches=args.max_api_fetches)
         print(f">> {n} new star records fetched", file=sys.stderr)

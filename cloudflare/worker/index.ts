@@ -58,6 +58,22 @@ async function handleRefresh(
     return new Response("method not allowed", { status: 405 });
   }
 
+  // Dedup: don't re-dispatch within 8 min of the most recent one for this
+  // user. Uses Workers Cache API — no KV/DO binding needed.
+  const cache = caches.default;
+  const dedupKey = new Request(
+    `https://internal-dedup.invalid/dispatch/${user}`,
+  );
+  const existing = await cache.match(dedupKey);
+  if (existing) {
+    return json({
+      ok: true,
+      user,
+      status: "already_running",
+      dispatched_at: existing.headers.get("X-Dispatched-At") ?? null,
+    }, 202);
+  }
+
   const repo = env.GH_REPO ?? "ArchiveBox/githubusers";
   const wf = env.GH_WORKFLOW ?? "mine-and-deploy.yml";
 
@@ -92,7 +108,19 @@ async function handleRefresh(
     const body = await resp.text();
     return json({ error: "dispatch failed", status: resp.status, body }, 502);
   }
-  return json({ ok: true, user }, 202);
+  // Set the dedup marker after a successful dispatch. 6-hour TTL — a
+  // successful mine doesn't need to be re-run sooner than that, and a
+  // failed/stuck job becomes retryable after 6 hours.
+  await cache.put(
+    dedupKey,
+    new Response("dispatched", {
+      headers: {
+        "Cache-Control": "max-age=21600",
+        "X-Dispatched-At": new Date().toISOString(),
+      },
+    }),
+  );
+  return json({ ok: true, user, status: "dispatched" }, 202);
 }
 
 

@@ -73,7 +73,7 @@ jobs:
           fi
           cat /tmp/targets.txt
 
-      - name: Mine each user (with progressive deploys)
+      - name: Mine each user (with live in-progress deploys)
         working-directory: .
         env:
           NO_COLOR: "1"
@@ -81,25 +81,59 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -e
+
+          deploy_now() {
+            (cd cloudflare && npx --yes wrangler@latest deploy --minify 2>&1 |
+              tail -2) || echo "::warning::interim deploy failed"
+          }
+
+          watch_and_deploy() {
+            # Watches stats_<user>.html every 30s while $1 (PID) is alive.
+            # Copies any updated file into the deploy dir and re-deploys so
+            # the live page shows partial data as mining progresses.
+            local pid="$1" user="$2" src="stats_${user}.html" \
+                  dst="cloudflare/public/${user}.html" last_mtime=0
+            while kill -0 "$pid" 2>/dev/null; do
+              sleep 30
+              if [ -f "$src" ]; then
+                local mtime
+                mtime=$(stat -c %Y "$src" 2>/dev/null \
+                        || stat -f %m "$src" 2>/dev/null || echo 0)
+                if [ "$mtime" -gt "$last_mtime" ]; then
+                  cp "$src" "$dst"
+                  echo "::group::Interim deploy of @$user (live)"
+                  deploy_now
+                  echo "::endgroup::"
+                  last_mtime="$mtime"
+                fi
+              fi
+            done
+          }
+
           while IFS= read -r user || [ -n "$user" ]; do
             user="${user%%#*}"
             user="${user//[[:space:]]/}"
             [ -z "$user" ] && continue
             [ "$user" = "pirate" ] && continue
             echo "::group::Mining @$user"
+            # Run mining in the background; watch loop deploys partials.
             python3 generate_stats.py --user "$user" \
               --no-search-commits \
-              --max-api-fetches 1500 \
-              || { echo "::warning::mining @$user failed"; continue; }
+              --max-api-fetches 1500 &
+            MINE_PID=$!
+            watch_and_deploy "$MINE_PID" "$user" &
+            WATCH_PID=$!
+            wait "$MINE_PID" || echo "::warning::mining @$user exited non-zero"
+            # Stop the watcher and do a final deploy with the final HTML.
+            kill "$WATCH_PID" 2>/dev/null || true
+            wait "$WATCH_PID" 2>/dev/null || true
             if [ -f "stats_$user.html" ]; then
               cp "stats_$user.html" "cloudflare/public/$user.html"
+              echo "::group::Final deploy of @$user"
+              deploy_now
+              echo "::endgroup::"
             fi
             echo "::endgroup::"
-            # Progressive deploy: ship after each user so single-user mines
-            # become visible as soon as they're done. Full runs cumulatively
-            # update the live deployment.
-            (cd cloudflare && npx --yes wrangler@latest deploy) || \
-              echo "::warning::interim deploy failed for $user"
           done < /tmp/targets.txt
 
       - name: Commit added users.txt entries
