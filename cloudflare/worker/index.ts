@@ -429,55 +429,55 @@ async function handleStatus(
 }
 
 
-// Dynamic homepage. Reads /users.txt (also deployed as a static asset
-// by CI) for the canonical list of users we want dashboards for, then
-// probes /{user}.html via the ASSETS binding to see which are ready vs
-// still queued/mining. Output is cached in Workers Cache for 30s so
-// repeated visits don't fan out to N internal asset probes each time.
+// Dynamic homepage. Reads /deployed.json (a CI-generated manifest of
+// users whose dashboard HTML actually exists) and /users.txt (the
+// canonical list of users we want), then computes deployed vs queued.
+// Only 2 subrequests instead of probing each /{user}.html individually
+// (which blew the Worker's 50/req subrequest limit at 80+ users).
 async function handleIndex(env: Env, url: URL): Promise<Response> {
   const cache = caches.default;
-  const cacheKey = new Request("https://internal-index.invalid/v1");
+  const cacheKey = new Request("https://internal-index.invalid/v2");
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
-  // Read users.txt from the deployed assets.
   const probeBase = new URL(url.toString());
   probeBase.search = "";
-  const usersTxtUrl = new URL(probeBase.toString());
-  usersTxtUrl.pathname = "/users.txt";
-  let users: string[] = [];
-  try {
-    const r = await env.ASSETS.fetch(new Request(usersTxtUrl.toString()));
-    if (r.ok) {
-      const txt = await r.text();
-      users = txt.split("\n")
-        .map((l) => l.split("#", 1)[0].trim())
-        .filter((l) => l.length > 0);
-    }
-  } catch {}
 
-  // Add pirate (intentionally not in users.txt — built locally).
-  if (!users.includes("pirate")) users.unshift("pirate");
-
-  // Probe each user's /<u>.html for deploy status in parallel.
-  const states = await Promise.all(users.map(async (u) => {
-    const probeUrl = new URL(probeBase.toString());
-    probeUrl.pathname = `/${u}.html`;
+  async function fetchAsset(path: string): Promise<string | null> {
     try {
-      const r = await env.ASSETS.fetch(new Request(probeUrl.toString()));
-      return { user: u, deployed: r.status === 200 };
+      const u = new URL(probeBase.toString());
+      u.pathname = path;
+      const r = await env.ASSETS.fetch(new Request(u.toString()));
+      if (!r.ok) return null;
+      return await r.text();
     } catch {
-      return { user: u, deployed: false };
+      return null;
     }
-  }));
+  }
 
-  const deployed = states
-    .filter((s) => s.deployed)
-    .map((s) => s.user)
+  // Parse users.txt — comment-aware, one login per line.
+  const usersTxt = await fetchAsset("/users.txt");
+  const wanted: string[] = (usersTxt ?? "")
+    .split("\n")
+    .map((l) => l.split("#", 1)[0].trim())
+    .filter((l) => l.length > 0);
+
+  // Parse deployed.json — JSON array of logins.
+  let deployedSet = new Set<string>();
+  const depJson = await fetchAsset("/deployed.json");
+  if (depJson) {
+    try {
+      const arr = JSON.parse(depJson) as string[];
+      if (Array.isArray(arr)) deployedSet = new Set(arr);
+    } catch {}
+  }
+  // Pirate is always deployed (committed in /public).
+  deployedSet.add("pirate");
+
+  const allUsers = new Set<string>([...wanted, ...deployedSet]);
+  const deployed = [...allUsers].filter((u) => deployedSet.has(u))
     .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-  const queued = states
-    .filter((s) => !s.deployed)
-    .map((s) => s.user)
+  const queued = [...allUsers].filter((u) => !deployedSet.has(u))
     .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
   const html = indexPage(deployed, queued);

@@ -140,6 +140,14 @@ jobs:
           # (before the mining loop) means every interim deploy also has
           # a fresh users.txt available to the homepage.
           cp cloudflare/users.txt cloudflare/public/users.txt
+          # Generate deployed.json — a JSON array of user logins whose
+          # dashboard HTML is currently in /public. Updated on every
+          # deploy_now() call below so the homepage stays accurate.
+          ls cloudflare/public/*.html 2>/dev/null \
+            | sed -E 's|cloudflare/public/||;s|\.html$||' \
+            | grep -vE '^(index|404)$' \
+            | python3 -c "import sys,json; print(json.dumps(sorted([l.strip() for l in sys.stdin if l.strip()])))" \
+            > cloudflare/public/deployed.json
           echo "Targets:"
           cat /tmp/targets.txt
 
@@ -156,7 +164,16 @@ jobs:
         run: |
           set -e
 
+          regen_manifest() {
+            ls cloudflare/public/*.html 2>/dev/null \
+              | sed -E 's|cloudflare/public/||;s|\.html$||' \
+              | grep -vE '^(index|404)$' \
+              | python3 -c "import sys,json; print(json.dumps(sorted([l.strip() for l in sys.stdin if l.strip()])))" \
+              > cloudflare/public/deployed.json
+          }
+
           deploy_now() {
+            regen_manifest
             (cd cloudflare && npx --yes wrangler@latest deploy --minify 2>&1 |
               tail -2) || echo "::warning::interim deploy failed"
           }
@@ -221,8 +238,15 @@ jobs:
           git push || echo "::warning::push failed (no commit permission?)"
 
       - name: Final deploy
-        working-directory: cloudflare
-        run: npx --yes wrangler@latest deploy
+        working-directory: .
+        run: |
+          # Regenerate deployed.json one last time before the final push.
+          ls cloudflare/public/*.html 2>/dev/null \
+            | sed -E 's|cloudflare/public/||;s|\.html$||' \
+            | grep -vE '^(index|404)$' \
+            | python3 -c "import sys,json; print(json.dumps(sorted([l.strip() for l in sys.stdin if l.strip()])))" \
+            > cloudflare/public/deployed.json
+          cd cloudflare && npx --yes wrangler@latest deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
