@@ -1,0 +1,1466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nick Sweeting — Git Contribution Stats</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #21262d;
+    --border: #30363d;
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --plus: #3fb950;
+    --minus: #f85149;
+    --heat-0: #161b22;
+    --heat-1: #0e4429;
+    --heat-2: #006d32;
+    --heat-3: #26a641;
+    --heat-4: #39d353;
+    --max-width: 1400px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+                 system-ui, sans-serif;
+    margin: 0; padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  header {
+    padding: 40px 20px 24px;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 4px 0;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+  header .sub {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .profile-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    max-width: 360px;
+    justify-content: flex-end;
+  }
+  .pchip {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 11px;
+    font-size: 12px;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    transition: border-color 0.1s;
+  }
+  .pchip:hover { border-color: var(--accent); color: var(--fg); }
+  .pchip .v {
+    color: var(--fg);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .pchip.sponsor-chip { border-color: #ea4aaa; }
+  .pchip.sponsor-chip:hover { background: rgba(234,74,170,0.1); }
+  .sponsor-avatars {
+    display: inline-flex;
+    margin-left: 4px;
+  }
+  .sponsor-avatars img {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    margin-left: -6px;
+  }
+  .sponsor-avatars img:first-child { margin-left: 0; }
+  main {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 24px 20px 64px;
+  }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  section h2 {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  /* totals strip */
+  .totals {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .stat {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+  }
+  .stat .label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .stat .value {
+    font-size: 28px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .delta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .delta .plus { color: var(--plus); }
+  .delta .minus { color: var(--minus); }
+
+  /* heatmap */
+  .heatmap-wrap {
+    overflow-x: auto;
+    margin-top: 12px;
+  }
+  .heatmap {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 4px;
+    min-width: 800px;
+  }
+  .heatmap-year-label {
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    align-self: center;
+    padding-right: 4px;
+  }
+  .heatmap-row {
+    display: grid;
+    grid-template-rows: repeat(7, 11px);
+    grid-auto-columns: 11px;
+    grid-auto-flow: column;
+    gap: 2px;
+  }
+  .day {
+    width: 11px; height: 11px; border-radius: 2px;
+    background: var(--heat-0);
+    transition: outline 0.06s, opacity 0.06s;
+    cursor: pointer;
+  }
+  /* Default green ramp (used when no company color is applied) */
+  .day.l1 { background: var(--heat-1); }
+  .day.l2 { background: var(--heat-2); }
+  .day.l3 { background: var(--heat-3); }
+  .day.l4 { background: var(--heat-4); }
+  /* When a per-day company color is provided as --co inline-style, use it
+     and vary intensity via opacity. */
+  .day.cc { background: var(--co); }
+  .day.cc.l1 { opacity: 0.35; }
+  .day.cc.l2 { opacity: 0.55; }
+  .day.cc.l3 { opacity: 0.80; }
+  .day.cc.l4 { opacity: 1.00; }
+  .day:hover { outline: 1px solid var(--fg); outline-offset: 0; }
+
+  .heatmap-months {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    color: var(--muted);
+    font-size: 10px;
+    padding-bottom: 2px;
+  }
+  .heatmap-legend {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .heatmap-legend .day { cursor: default; }
+
+  /* year cards */
+  .years-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .year-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    position: relative;
+  }
+  .year-card.sabbatical {
+    background: #1a1d24;
+    border-style: dashed;
+    opacity: 0.78;
+  }
+  .year-card .annot {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(139, 148, 158, 0.15);
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: lowercase;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+    font-weight: 400;
+  }
+  .year-card .y {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .year-card .row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .year-card .row .v {
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+  }
+  .year-card .bar {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--panel);
+    margin-top: 10px;
+    overflow: hidden;
+    display: flex;
+  }
+  .year-card .bar .add { background: var(--plus); }
+  .year-card .bar .del { background: var(--minus); }
+  .year-card .co-stack {
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    display: flex;
+    margin: 4px 0;
+    background: var(--panel);
+  }
+  .year-card .co-badges {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+  }
+  .co-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    border: 1px solid;
+    background: rgba(0,0,0,0.15);
+    white-space: nowrap;
+  }
+
+  /* repo table */
+  table.repos {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.repos th, table.repos td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+  }
+  table.repos th {
+    color: var(--muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    user-select: none;
+    cursor: pointer;
+  }
+  table.repos th[data-sort-active]::after {
+    content: " ▾";
+    color: var(--accent);
+  }
+  table.repos th[data-sort-active="asc"]::after { content: " ▴"; }
+  table.repos tr:hover { background: var(--panel-2); }
+  table.repos tr.repo-row td:first-child {
+    border-left: 3px solid transparent;
+  }
+  td.num { text-align: right; }
+  .co-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  td.plus { color: var(--plus); }
+  td.minus { color: var(--minus); }
+  .repo-link { color: var(--accent); }
+  .tags { display: inline-flex; gap: 4px; }
+  .tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tag.owned { color: var(--plus); border-color: #1f6028; }
+  .tag.local { color: var(--accent); border-color: #1f4d7a; }
+
+  /* split charts */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 800px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  /* tooltip */
+  #tt {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1000;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 12px;
+    color: var(--fg);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    display: none;
+    line-height: 1.4;
+  }
+  #tt .tt-date { color: var(--muted); font-size: 11px; }
+
+  /* bar chart of per-year */
+  .barchart {
+    display: grid;
+    grid-template-columns: 50px 1fr 90px;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+  }
+  .barchart .y { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .barchart.sabbatical { opacity: 0.55; }
+  .barchart.sabbatical .y::after {
+    content: " ⌛";
+    font-size: 9px;
+    color: var(--muted);
+  }
+  .heatmap-year-label.sabbatical { opacity: 0.55; }
+  .heatmap-row.sabbatical { opacity: 0.78; }
+  .barchart .bar {
+    height: 16px;
+    background: var(--panel);
+    border-radius: 3px;
+    overflow: hidden;
+    display: flex;
+  }
+  .barchart .bar .seg-c {
+    background: var(--accent);
+    height: 100%;
+  }
+  .barchart .bar .seg-co {
+    height: 100%;
+    transition: filter 0.06s;
+  }
+  .barchart .bar .seg-co:hover { filter: brightness(1.2); }
+  .barchart .v { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* career timeline (gantt) */
+  #career-timeline {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 4px 8px;
+    font-size: 12px;
+    align-items: center;
+  }
+  .ct-axis {
+    display: grid;
+    grid-template-columns: repeat(var(--years, 14), 1fr);
+    color: var(--muted);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 3px;
+    margin-bottom: 2px;
+  }
+  .ct-axis .y { text-align: center; }
+  .ct-name {
+    display: flex; align-items: center; gap: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ct-name a {
+    color: var(--fg);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ct-name a:hover { text-decoration: underline; }
+  .ct-role {
+    color: var(--muted); font-size: 10px;
+    margin-left: 6px;
+  }
+  .ct-track {
+    position: relative;
+    height: 18px;
+    background: var(--panel);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .ct-bar {
+    position: absolute;
+    top: 0; bottom: 0;
+    border-radius: 3px;
+    opacity: 0.85;
+    cursor: pointer;
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.15);
+    transition: opacity 0.1s, transform 0.1s;
+  }
+  .ct-bar:hover { opacity: 1; transform: scaleY(1.06); }
+  .ct-bar.ongoing::after {
+    content: "→";
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    color: rgba(255,255,255,0.7); font-size: 11px;
+  }
+  .ct-bar-label {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; padding: 0 6px;
+    color: rgba(255,255,255,0.9); font-size: 10px;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.4);
+    pointer-events: none;
+    white-space: nowrap; overflow: hidden;
+  }
+
+  /* hour-of-day histogram */
+  #hour-histogram {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 2px;
+    align-items: end;
+    height: 110px;
+    margin: 8px 0 4px;
+  }
+  .hh-bar {
+    background: var(--accent);
+    border-radius: 2px 2px 0 0;
+    min-height: 2px;
+    position: relative;
+    cursor: pointer;
+    transition: filter 0.1s;
+  }
+  .hh-bar:hover { filter: brightness(1.3); }
+  .hh-label {
+    grid-column: span 24;
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 2px;
+    color: var(--muted);
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    margin-top: 4px;
+  }
+  .hh-night { background: #4c5169 !important; }
+  .hh-morning { background: #8b9af3 !important; }
+  .hh-afternoon { background: var(--accent) !important; }
+  .hh-evening { background: #d97706 !important; }
+
+  /* language breakdown */
+  .lang-year-grid {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    gap: 4px 8px;
+    align-items: center;
+    font-size: 11px;
+  }
+  .lang-year-grid .y { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .lang-year-bar {
+    display: flex;
+    height: 14px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--panel);
+  }
+  .lang-seg { height: 100%; transition: filter 0.06s; }
+  .lang-seg:hover { filter: brightness(1.3); }
+
+  /* dow×hour heatmap */
+  .dow-heatmap-wrap { overflow-x: auto; }
+  #dow-heatmap {
+    display: grid;
+    grid-template-columns: 40px repeat(24, 1fr);
+    gap: 3px;
+    min-width: 700px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .dh-hour-header {
+    text-align: center;
+    padding: 2px 0;
+  }
+  .dh-dow-label {
+    padding-right: 4px;
+    text-align: right;
+    align-self: center;
+  }
+  .dh-cell {
+    height: 22px;
+    background: var(--heat-0);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .dh-cell:hover { outline: 1px solid var(--fg); }
+  .dh-cell.l1 { background: var(--heat-1); }
+  .dh-cell.l2 { background: var(--heat-2); }
+  .dh-cell.l3 { background: var(--heat-3); }
+  .dh-cell.l4 { background: var(--heat-4); }
+
+  /* top bars */
+  .topbars { display: flex; flex-direction: column; gap: 4px; }
+  .topbar {
+    display: grid;
+    grid-template-columns: 200px 1fr 130px;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+  }
+  .topbar-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .topbar-bar {
+    height: 14px;
+    background: var(--panel);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .topbar-fill { background: var(--accent); height: 100%; }
+  .topbar-val {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  /* controls */
+  .controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .controls input[type=search] {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 13px;
+    min-width: 240px;
+    font-family: inherit;
+  }
+  .controls input[type=search]:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .footer-note {
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+    margin-top: 24px;
+  }
+  /* Mining-in-progress banner (shown only when DATA.mining_status !== "complete") */
+  #mining-banner {
+    position: sticky; top: 0; z-index: 100;
+    background: linear-gradient(90deg, #1f6028, #58a6ff);
+    color: white; text-align: center; padding: 8px 16px;
+    font-size: 13px; display: none;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+  }
+  #mining-banner .spin {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,0.4); border-top-color: white;
+    border-radius: 50%; animation: mb-spin 0.9s linear infinite;
+    vertical-align: -2px; margin-right: 8px;
+  }
+  @keyframes mb-spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="mining-banner">
+  <span class="spin"></span>
+  <strong>Mining in progress</strong> — partial data shown. Auto-refreshing every <span id="mb-secs">30</span>s · phase: <code id="mb-phase">—</code>
+</div>
+
+<header>
+  <div style="display:flex;gap:14px;align-items:center;">
+    <img id="hdr-avatar" src="" alt="" style="width:64px;height:64px;border-radius:50%;display:none;border:1px solid var(--border);">
+    <div style="flex:1;">
+      <h1 id="hdr-name">Nick Sweeting</h1>
+      <div class="sub">
+        <span id="hdr-handle">@pirate</span> ·
+        <span id="hdr-bio" style="color:var(--muted);"></span>
+      </div>
+      <div class="sub" style="margin-top:6px;">
+        Git contribution dashboard · <span id="hdr-range">—</span>
+      </div>
+    </div>
+    <div id="hdr-profile" class="profile-chips"></div>
+  </div>
+</header>
+
+<main>
+
+<section>
+  <h2>Totals across all time</h2>
+  <div class="totals" id="totals"></div>
+</section>
+
+<section id="career-section">
+  <h2>Career timeline <span style="color:var(--muted);font-weight:400;font-size:12px;">(click a row to view the blog entry)</span></h2>
+  <div id="career-timeline"></div>
+</section>
+
+<section>
+  <h2>Contribution heatmap</h2>
+  <div class="heatmap-wrap">
+    <div id="heatmap"></div>
+  </div>
+  <div class="heatmap-legend">
+    <span>Less</span>
+    <span class="day"></span>
+    <span class="day l1"></span>
+    <span class="day l2"></span>
+    <span class="day l3"></span>
+    <span class="day l4"></span>
+    <span>More</span>
+  </div>
+</section>
+
+<section>
+  <div class="grid-2">
+    <div>
+      <h2>Commits per year</h2>
+      <div id="bar-commits" class="bars"></div>
+    </div>
+    <div>
+      <h2>Lines changed per year</h2>
+      <div id="bar-lines" class="bars"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Sleep schedule <span style="color:var(--muted);font-weight:400;font-size:12px;">(hour-of-day in commit-local time, adjusted for PST/EST moves)</span></h2>
+  <div id="hour-histogram"></div>
+</section>
+
+<section>
+  <h2>Language breakdown <span style="color:var(--muted);font-weight:400;font-size:12px;">(by file extension; excludes vendored/lock files)</span></h2>
+  <div class="grid-2">
+    <div>
+      <div id="lang-bars" class="topbars"></div>
+    </div>
+    <div>
+      <div id="lang-by-year" class="lang-year-grid"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Year-by-year breakdown</h2>
+  <div id="years" class="years-grid"></div>
+</section>
+
+<section>
+  <h2>Top contributions</h2>
+  <div class="grid-2">
+    <div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
+        Top 20 by commits
+      </div>
+      <div id="top-by-commits" class="topbars"></div>
+    </div>
+    <div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
+        Top 20 by lines changed
+      </div>
+      <div id="top-by-lines" class="topbars"></div>
+    </div>
+  </div>
+  <div class="grid-2" style="margin-top:16px;">
+    <div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
+        Top 20 by stars ⭐
+      </div>
+      <div id="top-by-stars" class="topbars"></div>
+    </div>
+    <div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
+        Top 10 by merged PRs
+      </div>
+      <div id="top-by-pri" class="topbars"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>All repositories</h2>
+  <div class="controls">
+    <input type="search" id="repo-filter" placeholder="filter repos…">
+    <span id="repo-count"></span>
+  </div>
+  <table class="repos" id="repos">
+    <thead>
+      <tr>
+        <th data-sort="repo">Repository</th>
+        <th data-sort="commits" class="num">Commits</th>
+        <th data-sort="add" class="num">+Lines</th>
+        <th data-sort="del" class="num">-Lines</th>
+        <th data-sort="stars" class="num">⭐</th>
+        <th data-sort="prs_merged" class="num">PRs✓</th>
+        <th data-sort="prs" class="num">PRs</th>
+        <th data-sort="issues" class="num">Iss</th>
+        <th data-sort="span">Active span</th>
+        <th data-sort="years" class="num">Yrs</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<div class="footer-note" id="footer-note"></div>
+
+</main>
+
+<div id="tt"></div>
+
+<script id="DATA" type="application/json">/*__DATA__*/null</script>
+<script>
+"use strict";
+
+// Parse the embedded JSON data block.
+const DATA = JSON.parse(document.getElementById("DATA").textContent);
+
+// Company → color lookup, built from the jobs list.
+const COMPANY_COLOR = {};
+for (const j of ((DATA.annotations || {}).jobs || [])) {
+  COMPANY_COLOR[j.company] = j.color;
+}
+function companyColor(name) {
+  return COMPANY_COLOR[name] || null;
+}
+
+// ---------- helpers ----------
+const fmt = n => n == null ? "—" :
+  n >= 1e6 ? (n/1e6).toFixed(2).replace(/\.?0+$/, "") + "M"
+  : n >= 1e3 ? (n/1e3).toFixed(1).replace(/\.0$/, "") + "K"
+  : String(n);
+const fmtExact = n => n == null ? "—" : n.toLocaleString();
+const isoToDate = s => { const [y,m,d] = s.split("-").map(Number); return new Date(Date.UTC(y, m-1, d)); };
+const dateToISO = d => d.toISOString().slice(0, 10);
+const dayOfWeek = d => (d.getUTCDay() + 6) % 7;  // Mon=0..Sun=6 (GH uses Sun=0)
+
+// Tooltip
+const tt = document.getElementById("tt");
+function showTip(e, html) {
+  tt.innerHTML = html;
+  tt.style.display = "block";
+  const r = tt.getBoundingClientRect();
+  let x = e.clientX + 12, y = e.clientY + 12;
+  if (x + r.width > window.innerWidth) x = e.clientX - r.width - 12;
+  if (y + r.height > window.innerHeight) y = e.clientY - r.height - 12;
+  tt.style.left = x + "px";
+  tt.style.top = y + "px";
+}
+function hideTip() { tt.style.display = "none"; }
+document.addEventListener("scroll", hideTip, true);
+
+// ---------- mining-in-progress banner ----------
+{
+  const status = DATA.mining_status || "complete";
+  if (status !== "complete") {
+    const banner = document.getElementById("mining-banner");
+    if (banner) {
+      banner.style.display = "block";
+      const phaseEl = document.getElementById("mb-phase");
+      if (phaseEl) phaseEl.textContent = DATA.mining_phase || status;
+      // Auto-reload every 30s to pick up newer partial / final renders.
+      // Cache-bust with a query param so CDN doesn't return stale.
+      setTimeout(() => {
+        const u = new URL(location.href);
+        u.searchParams.set("_t", Date.now().toString());
+        location.replace(u.toString());
+      }, 30000);
+    }
+  }
+}
+
+// ---------- header ----------
+document.getElementById("hdr-name").textContent = DATA.user.name;
+document.getElementById("hdr-handle").innerHTML =
+  `<a href="https://github.com/${DATA.user.login}">@${DATA.user.login}</a>`;
+if (DATA.totals.first_day && DATA.totals.last_day) {
+  document.getElementById("hdr-range").textContent =
+    `${DATA.totals.first_day} → ${DATA.totals.last_day}`;
+}
+{
+  const p = (DATA.user.profile) || {};
+  if (p.avatar_url) {
+    const a = document.getElementById("hdr-avatar");
+    a.src = p.avatar_url; a.style.display = "block";
+  }
+  if (p.bio) document.getElementById("hdr-bio").textContent = p.bio;
+  const chips = [];
+  if (p.followers != null) {
+    chips.push(`<a class="pchip" href="https://github.com/${DATA.user.login}?tab=followers" target="_blank" title="Followers">
+      <span class="v">${fmtExact(p.followers)}</span> followers</a>`);
+  }
+  if (p.following != null) {
+    chips.push(`<a class="pchip" href="https://github.com/${DATA.user.login}?tab=following" target="_blank" title="Following">
+      <span class="v">${fmtExact(p.following)}</span> following</a>`);
+  }
+  if (p.sponsors && (p.sponsors_count || 0) > 0) {
+    const url = p.sponsors_url || `https://github.com/sponsors/${DATA.user.login}`;
+    const avatars = p.sponsors.slice(0, 6).map(s =>
+      `<img src="${s.avatar_url || ''}" alt="${s.login || ''}" title="${s.name || s.login || ''} (@${s.login || ''})">`
+    ).join("");
+    chips.push(`<a class="pchip sponsor-chip" href="${url}" target="_blank" title="GitHub Sponsors">
+      💖 <span class="v">${fmtExact(p.sponsors_count)}</span> sponsors
+      ${avatars ? `<span class="sponsor-avatars">${avatars}</span>` : ""}</a>`);
+  } else if (p.has_sponsors_listing) {
+    const url = p.sponsors_url || `https://github.com/sponsors/${DATA.user.login}`;
+    chips.push(`<a class="pchip sponsor-chip" href="${url}" target="_blank">💖 sponsor</a>`);
+  }
+  if (p.created_at) {
+    const yr = p.created_at.slice(0, 4);
+    chips.push(`<span class="pchip" title="GitHub account creation date">
+      since <span class="v">${yr}</span></span>`);
+  }
+  document.getElementById("hdr-profile").innerHTML = chips.join("");
+}
+
+// ---------- totals strip ----------
+{
+  const t = DATA.totals;
+  const yrs = (t.first_day && t.last_day)
+    ? (parseInt(t.last_day) - parseInt(t.first_day) + 1) : 0;
+  const totalsEl = document.getElementById("totals");
+  const stats = [
+    { label: "Commits", value: fmtExact(t.commits),
+      delta: yrs ? `over ${yrs} years` : "" },
+    { label: "Lines added", value: fmtExact(t.additions),
+      delta: `<span class="plus">+</span>` },
+    { label: "Lines removed", value: fmtExact(t.deletions),
+      delta: `<span class="minus">−</span>` },
+    { label: "Repositories", value: fmtExact(t.repos), delta: "" },
+    { label: "Stars earned", value: fmtExact(t.stars || 0),
+      delta: "from repos where you authored ≥15% of commits" },
+    { label: "PRs merged", value: fmtExact(t.prs_merged || 0),
+      delta: `of ${fmtExact(t.prs || 0)} authored` },
+    { label: "Issues filed", value: fmtExact(t.issues || 0), delta: "" },
+    { label: "Active days", value: fmtExact(Object.keys(DATA.by_day).length),
+      delta: "" },
+  ];
+  totalsEl.innerHTML = stats.map(s => `
+    <div class="stat">
+      <div class="label">${s.label}</div>
+      <div class="value">${s.value}</div>
+      <div class="delta">${s.delta}</div>
+    </div>`).join("");
+}
+
+// ---------- career timeline ----------
+{
+  const allJobs = (DATA.annotations && DATA.annotations.jobs) || [];
+  // Synthetic entries (color-only, no dates) are used for company colors
+  // in generic --user runs. Don't show those in the career-timeline UI.
+  const jobs = allJobs.filter(j => j && !j.synthetic && j.start);
+  const jobsUrl = (DATA.annotations && DATA.annotations.jobs_url) || "#";
+  const el = document.getElementById("career-timeline");
+  if (!jobs.length) {
+    document.getElementById("career-section").style.display = "none";
+  } else {
+    // Determine year range from data
+    const yearsArr = Object.keys(DATA.by_year).map(Number).sort();
+    const minY = yearsArr[0];
+    const maxY = yearsArr[yearsArr.length - 1];
+    const nYears = maxY - minY + 1;
+
+    // Parse "YYYY-MM" → fractional year (e.g. 2014-07 → 2014.5)
+    const parseDate = (s, fallbackEnd) => {
+      if (!s) return fallbackEnd;
+      const [y, m] = s.split("-").map(Number);
+      return y + ((m || 1) - 1) / 12;
+    };
+    const now = new Date();
+    const nowFrac = now.getUTCFullYear() + now.getUTCMonth() / 12;
+
+    // Sort jobs by start date so the timeline reads naturally
+    const sorted = [...jobs].sort((a, b) =>
+      parseDate(a.start, 0) - parseDate(b.start, 0));
+
+    // Build axis (one column per year)
+    const axisCells = [];
+    for (let y = minY; y <= maxY; y++) axisCells.push(`<div class="y">${y}</div>`);
+
+    const rows = [`
+      <div></div>
+      <div class="ct-axis" style="--years:${nYears}">${axisCells.join("")}</div>`];
+
+    for (const j of sorted) {
+      const startFrac = parseDate(j.start, minY);
+      const endFrac = j.end ? parseDate(j.end, nowFrac) : nowFrac;
+      const leftPct = ((startFrac - minY) / nYears) * 100;
+      const widthPct = ((endFrac - startFrac) / nYears) * 100;
+      const url = `${jobsUrl.split("#")[0]}#${j.anchor || "Full-Time-Jobs"}`;
+      const ongoingCls = j.end == null ? " ongoing" : "";
+      const yrs = j.end
+        ? `${j.start.split("-")[0]}–${j.end.split("-")[0]}`
+        : `${j.start.split("-")[0]}–`;
+      rows.push(`
+        <div class="ct-name">
+          <a href="${url}" target="_blank" title="${j.role || ""}">${j.company}</a>
+        </div>
+        <div class="ct-track" title="${j.company} · ${j.role || ""} · ${yrs}">
+          <div class="ct-bar${ongoingCls}"
+            style="left:${leftPct}%;width:${widthPct}%;background:${j.color || "#888"}"
+            onclick="window.open('${url}','_blank')">
+            <div class="ct-bar-label">${j.company}${j.role ? ` · ${j.role}` : ""}</div>
+          </div>
+        </div>`);
+    }
+    el.style.setProperty("--years", String(nYears));
+    el.innerHTML = rows.join("");
+  }
+}
+
+// ---------- heatmap ----------
+{
+  const wrap = document.getElementById("heatmap");
+  const byDay = DATA.by_day;
+  const days = Object.keys(byDay).sort();
+  if (days.length) {
+    const startYear = parseInt(days[0].slice(0, 4));
+    const endYear = parseInt(days[days.length-1].slice(0, 4));
+    // Quartile-based color thresholds so a single mega-day doesn't push
+    // every other day to l1.
+    const counts = Object.values(byDay).map(v => v.c).sort((a, b) => a - b);
+    const pct = (p) => counts.length
+      ? counts[Math.min(counts.length-1, Math.floor(p * counts.length))] : 0;
+    const t1 = Math.max(1, pct(0.30));
+    const t2 = Math.max(t1+1, pct(0.65));
+    const t3 = Math.max(t2+1, pct(0.85));
+    const t4 = Math.max(t3+1, pct(0.95));
+    function colorClass(c) {
+      if (!c) return "";
+      if (c >= t4) return "l4";
+      if (c >= t3) return "l3";
+      if (c >= t2) return "l2";
+      return "l1";
+    }
+
+    const html = [];
+    html.push(`<div class="heatmap">`);
+    for (let y = startYear; y <= endYear; y++) {
+      const start = new Date(Date.UTC(y, 0, 1));
+      const end = new Date(Date.UTC(y, 11, 31));
+      // Pad so week starts on Monday
+      const startDay = dayOfWeek(start);
+      const cells = [];
+      for (let i = 0; i < startDay; i++) cells.push(`<div></div>`);
+      let dailyTotal = 0, dailyAdd = 0, dailyDel = 0;
+      for (let d = new Date(start); d <= end; d = new Date(d.getTime() + 86400000)) {
+        const iso = dateToISO(d);
+        const v = byDay[iso];
+        if (v) { dailyTotal += v.c; dailyAdd += v.a; dailyDel += v.d; }
+        const cls = v ? colorClass(v.c) : "";
+        const co = v && v.co ? companyColor(v.co) : null;
+        const ccCls = co ? "cc " : "";
+        const data = v ? `data-d='${iso}' data-c='${v.c}' data-a='${v.a}' data-l='${v.d}' data-co='${v.co || ''}'`
+                       : `data-d='${iso}'`;
+        const style = co ? `style="--co:${co}"` : "";
+        cells.push(`<div class="day ${ccCls}${cls}" ${data} ${style}></div>`);
+      }
+      // We need to render row-by-row to keep weeks as columns.
+      // Easier: use CSS grid auto-flow column.
+      const yNote = ((DATA.annotations && DATA.annotations.year_notes) || {})[y];
+      const yCls = yNote ? ' ' + yNote : '';
+      html.push(`
+        <div class="heatmap-year-label${yCls}" title="${yNote || ''}">${y}</div>
+        <div class="heatmap-row${yCls}">
+          ${cells.join("")}
+        </div>`);
+    }
+    html.push(`</div>`);
+    wrap.innerHTML = html.join("");
+
+    // Bind tooltips
+    wrap.addEventListener("mouseover", (e) => {
+      const t = e.target.closest(".day");
+      if (!t || !t.dataset.d) return;
+      const c = t.dataset.c, a = t.dataset.a, l = t.dataset.l;
+      const html = c
+        ? `<div class="tt-date">${t.dataset.d}</div>
+           <div>${c} commit${c=="1"?"":"s"} ·
+                <span style="color:var(--plus)">+${fmtExact(+a)}</span> /
+                <span style="color:var(--minus)">-${fmtExact(+l)}</span></div>`
+        : `<div class="tt-date">${t.dataset.d}</div><div>No commits</div>`;
+      showTip(e, html);
+    });
+    wrap.addEventListener("mousemove", (e) => {
+      if (tt.style.display === "block") {
+        const r = tt.getBoundingClientRect();
+        let x = e.clientX + 12, y = e.clientY + 12;
+        if (x + r.width > window.innerWidth) x = e.clientX - r.width - 12;
+        tt.style.left = x + "px"; tt.style.top = y + "px";
+      }
+    });
+    wrap.addEventListener("mouseout", (e) => {
+      if (!e.relatedTarget || !e.relatedTarget.closest(".day")) hideTip();
+    });
+  } else {
+    wrap.innerHTML = `<div style="color:var(--muted)">No commits.</div>`;
+  }
+}
+
+// ---------- per-year bars ----------
+{
+  const years = Object.keys(DATA.by_year).sort();
+  const maxC = Math.max(...years.map(y => DATA.by_year[y].commits), 1);
+  const maxL = Math.max(...years.map(y =>
+    DATA.by_year[y].add + DATA.by_year[y].del), 1);
+  const barsC = document.getElementById("bar-commits");
+  const barsL = document.getElementById("bar-lines");
+  const yearNotesBC = (DATA.annotations && DATA.annotations.year_notes) || {};
+  const byYearCompany = DATA.by_year_company || {};
+  barsC.innerHTML = years.map(y => {
+    const v = DATA.by_year[y];
+    const totalW = (v.commits / maxC) * 100;
+    const note = yearNotesBC[y];
+    // Stacked segments per company. The TOTAL of the stack fills (year_commits
+    // / maxC) of the bar width; within that, each company's slice is proportional.
+    const byCo = byYearCompany[y] || {};
+    const segs = Object.entries(byCo).sort((a, b) => b[1].c - a[1].c);
+    const stack = segs.map(([co, info]) => {
+      // Each segment is (info.c / maxC) * 100% of bar width.
+      const segW = (info.c / maxC) * 100;
+      const color = (co === "_other")
+        ? "var(--accent)"
+        : (companyColor(co) || "var(--accent)");
+      const label = co === "_other" ? "Other / personal" : co;
+      return `<div class="seg-co"
+        style="width:${segW}%;background:${color};"
+        title="${label}: ${fmtExact(info.c)} commits"></div>`;
+    }).join("");
+    return `<div class="barchart${note ? ' ' + note : ''}" title="${note || ''}">
+      <div class="y">${y}</div>
+      <div class="bar" style="display:flex;">${stack}</div>
+      <div class="v">${fmtExact(v.commits)}</div>
+    </div>`;
+  }).join("");
+  barsL.innerHTML = years.map(y => {
+    const v = DATA.by_year[y];
+    const total = v.add + v.del;
+    const addW = total ? (v.add / maxL) * 100 : 0;
+    const delW = total ? (v.del / maxL) * 100 : 0;
+    const note = yearNotesBC[y];
+    return `<div class="barchart${note ? ' ' + note : ''}" title="${note || ''}">
+      <div class="y">${y}</div>
+      <div class="bar">
+        <div style="background:var(--plus);width:${addW}%;height:100%"></div>
+        <div style="background:var(--minus);width:${delW}%;height:100%"></div>
+      </div>
+      <div class="v"><span class="plus" style="color:var(--plus)">+${fmt(v.add)}</span>
+        <span style="color:var(--muted)">/</span>
+        <span class="minus" style="color:var(--minus)">-${fmt(v.del)}</span></div>
+    </div>`;
+  }).join("");
+}
+
+// ---------- sleep-schedule (hour-of-day histogram) ----------
+{
+  const hours = (DATA.by_hour_local || []);
+  const maxC = Math.max(...hours.map(h => h.c), 1);
+  const el = document.getElementById("hour-histogram");
+  const hourClass = (h) => {
+    if (h < 6) return "hh-night";       // 0–5: night (deep blue)
+    if (h < 12) return "hh-morning";    // 6–11: morning (light blue)
+    if (h < 18) return "hh-afternoon";  // 12–17: afternoon (accent blue)
+    return "hh-evening";                // 18–23: evening (orange)
+  };
+  const bars = hours.map((h) => {
+    const heightPct = (h.c / maxC) * 100;
+    return `<div class="hh-bar ${hourClass(h.hour)}"
+      style="height:${heightPct}%"
+      data-hour="${h.hour}" data-c="${h.c}"></div>`;
+  });
+  const labels = hours.map((h) =>
+    `<div>${h.hour % 3 === 0 ? String(h.hour).padStart(2, "0") : ""}</div>`
+  );
+  el.innerHTML = bars.join("") +
+    `<div class="hh-label">${labels.join("")}</div>`;
+  el.addEventListener("mouseover", (e) => {
+    const t = e.target.closest(".hh-bar");
+    if (!t) return;
+    const h = +t.dataset.hour;
+    const c = +t.dataset.c;
+    const fmt12 = (h) => {
+      const m = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+      const ampm = h < 12 ? "AM" : "PM";
+      return `${m}${ampm}`;
+    };
+    showTip(e, `<div class="tt-date">${fmt12(h)} (local)</div><div>${fmtExact(c)} commits</div>`);
+  });
+  el.addEventListener("mousemove", (e) => {
+    if (tt.style.display !== "block") return;
+    tt.style.left = (e.clientX + 12) + "px";
+    tt.style.top = (e.clientY + 12) + "px";
+  });
+  el.addEventListener("mouseout", (e) => {
+    if (!e.relatedTarget || !e.relatedTarget.closest(".hh-bar")) hideTip();
+  });
+}
+
+// ---------- language breakdown ----------
+{
+  const langs = DATA.by_lang || {};
+  const LANG_COLORS = {
+    "Python": "#3572A5", "JavaScript": "#f1e05a", "TypeScript": "#3178c6",
+    "Go": "#00ADD8", "Rust": "#dea584", "Ruby": "#701516",
+    "Java": "#b07219", "Kotlin": "#A97BFF", "Swift": "#ffac45",
+    "C": "#555555", "C++": "#f34b7d", "C#": "#178600", "Objective-C": "#438eff",
+    "PHP": "#4F5D95", "Scala": "#c22d40", "Clojure": "#db5855",
+    "Lua": "#000080", "Elixir": "#6e4a7e", "Erlang": "#B83998",
+    "Dart": "#00B4AB", "Haskell": "#5e5086",
+    "HTML": "#e34c26", "CSS": "#563d7c", "Vue": "#41b883",
+    "Svelte": "#ff3e00", "Astro": "#ff5a03",
+    "Markdown": "#083fa1", "reST": "#141414", "TeX": "#3D6117",
+    "Shell": "#89e051", "PowerShell": "#012456",
+    "SQL": "#e38c00", "YAML": "#cb171e", "TOML": "#9c4221",
+    "JSON": "#292929", "XML": "#0060ac",
+    "Protobuf": "#fa653a", "GraphQL": "#e10098",
+    "Docker": "#384d54", "Terraform": "#623ce4", "HCL": "#844FBA",
+    "Vim script": "#199f4b", "Nix": "#7e7eff", "Zig": "#ec915c",
+    "Crystal": "#000100", "Julia": "#a270ba", "R": "#198CE7",
+    "Perl": "#0298c3", "CoffeeScript": "#244776",
+    "Elm": "#60B5CC", "PureScript": "#1D222D",
+    "F#": "#b845fc", "OCaml": "#3be133", "ReasonML": "#ff5847",
+    "Solidity": "#AA6746", "Move": "#3aae3a", "Cairo": "#ff4a48",
+    "Verilog": "#b2b7f8", "SystemVerilog": "#DAE1C2", "VHDL": "#adb2cb",
+    "Assembly": "#6E4C13", "Lisp": "#3fb68b", "Scheme": "#1e4aec",
+    "Raku": "#0000fb", "Make": "#427819",
+    "Other": "#8b949e",
+  };
+  const langColor = (l) => LANG_COLORS[l] || "#8b949e";
+  // Sort by total lines changed
+  const sorted = Object.entries(langs)
+    .map(([l, v]) => ({lang: l, add: v.add, del: v.del,
+                       total: v.add + v.del, commits: v.commits}))
+    .sort((a, b) => b.total - a.total);
+  const top = sorted.slice(0, 20);
+  const maxLines = top.length ? top[0].total : 1;
+  document.getElementById("lang-bars").innerHTML = top.map(l => {
+    const w = (l.total / maxLines) * 100;
+    const co = langColor(l.lang);
+    return `<div class="topbar">
+      <div class="topbar-name" title="${l.lang}">
+        <span class="co-dot" style="background:${co}"></span>${l.lang}
+      </div>
+      <div class="topbar-bar"><div class="topbar-fill" style="width:${w}%;background:${co}"></div></div>
+      <div class="topbar-val"><span style="color:var(--plus)">+${fmt(l.add)}</span> / <span style="color:var(--minus)">-${fmt(l.del)}</span></div>
+    </div>`;
+  }).join("");
+
+  // Per-year stacked language bars
+  const byYearLang = DATA.by_year_lang || {};
+  const years = Object.keys(byYearLang).sort();
+  const yearMax = Math.max(...years.map(y => {
+    const yl = byYearLang[y] || {};
+    return Object.values(yl).reduce((s, v) => s + (v.add||0) + (v.del||0), 0);
+  }), 1);
+  document.getElementById("lang-by-year").innerHTML = years.map(y => {
+    const yl = byYearLang[y] || {};
+    const segs = Object.entries(yl)
+      .map(([lang, v]) => ({lang, total: (v.add||0) + (v.del||0)}))
+      .filter(s => s.total > 0)
+      .sort((a, b) => b.total - a.total);
+    const yearTotal = segs.reduce((s, x) => s + x.total, 0);
+    const stack = segs.map(s => {
+      const w = (s.total / yearMax) * 100;
+      return `<div class="lang-seg" style="width:${w}%;background:${langColor(s.lang)}"
+        title="${y} · ${s.lang}: ${fmt(s.total)} lines"></div>`;
+    }).join("");
+    return `<div class="y">${y}</div>
+      <div class="lang-year-bar">${stack}</div>`;
+  }).join("");
+}
+
+// ---------- top contributions ----------
+{
+  const entries = Object.entries(DATA.by_repo);
+  const topC = [...entries]
+    .sort((a, b) => b[1].commits - a[1].commits).slice(0, 20);
+  const topL = [...entries]
+    .sort((a, b) => (b[1].add + b[1].del) - (a[1].add + a[1].del)).slice(0, 20);
+  const maxC = topC.length ? topC[0][1].commits : 1;
+  const maxL = topL.length ? (topL[0][1].add + topL[0][1].del) : 1;
+  const linkFor = (_name, v) => {
+    if (v.remote && v.remote.includes("github.com")) {
+      const m = v.remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/);
+      return m ? `https://github.com/${m[1]}` : null;
+    }
+    return null;
+  };
+  const renderRow = (name, v, val, max, valFmt) => {
+    const w = (val / max) * 100;
+    const link = linkFor(name, v);
+    const lbl = link
+      ? `<a class="repo-link" href="${link}" target="_blank">${name}</a>`
+      : name;
+    const co = v.company ? companyColor(v.company) : null;
+    const dot = co
+      ? `<span class="co-dot" style="background:${co}" title="${v.company}"></span>`
+      : "";
+    const fillBg = co ? `background:${co}` : "";
+    return `<div class="topbar">
+      <div class="topbar-name" title="${name}${v.company ? ' · ' + v.company : ''}">${dot}${lbl}</div>
+      <div class="topbar-bar"><div class="topbar-fill" style="width:${w}%;${fillBg}"></div></div>
+      <div class="topbar-val">${valFmt}</div>
+    </div>`;
+  };
+  document.getElementById("top-by-commits").innerHTML =
+    topC.map(([n, v]) => renderRow(n, v, v.commits, maxC, fmtExact(v.commits))).join("");
+  document.getElementById("top-by-lines").innerHTML =
+    topL.map(([n, v]) => renderRow(n, v, v.add + v.del, maxL,
+      `<span style="color:var(--plus)">+${fmt(v.add)}</span> / <span style="color:var(--minus)">-${fmt(v.del)}</span>`)).join("");
+  // Top by stars — same rule as the "Stars earned" total: only repos where
+  // the user authored ≥15% of all commits in the repo. Falls back to
+  // "contributed" if total-commits data isn't available.
+  const SHARE = 0.15;
+  const isMaterial = (v) => v.contributed && (
+    (v.share != null) ? v.share >= SHARE : v.contributed
+  );
+  const topS = [...entries]
+    .filter(([_, v]) => isMaterial(v) && (v.stars || 0) > 0)
+    .sort((a, b) => (b[1].stars || 0) - (a[1].stars || 0)).slice(0, 20);
+  const maxS = topS.length ? (topS[0][1].stars || 0) : 1;
+  document.getElementById("top-by-stars").innerHTML =
+    topS.length
+      ? topS.map(([n, v]) => renderRow(n, v, v.stars || 0, maxS,
+          `${fmtExact(v.stars)} ⭐`)).join("")
+      : `<div style="color:var(--muted);font-size:11px;">no star data yet</div>`;
+  // Top by MERGED PRs (real merged contributions only)
+  const topPRI = [...entries]
+    .filter(([_, v]) => (v.prs_merged || 0) > 0)
+    .sort((a, b) => (b[1].prs_merged || 0) - (a[1].prs_merged || 0))
+    .slice(0, 10);
+  const maxPRI = topPRI.length ? (topPRI[0][1].prs_merged || 0) : 1;
+  document.getElementById("top-by-pri").innerHTML =
+    topPRI.length
+      ? topPRI.map(([n, v]) => renderRow(n, v,
+          v.prs_merged || 0, maxPRI,
+          `${fmtExact(v.prs_merged||0)} merged PRs`)).join("")
+      : `<div style="color:var(--muted);font-size:11px;">no merged PR data yet</div>`;
+}
+
+// ---------- year cards ----------
+{
+  const years = Object.keys(DATA.by_year).sort();
+  const yearNotes = (DATA.annotations && DATA.annotations.year_notes) || {};
+  const yearCompanies = DATA.by_year_company || {};
+  const el = document.getElementById("years");
+  el.innerHTML = years.map(y => {
+    const v = DATA.by_year[y];
+    const note = yearNotes[y];
+    const total = v.add + v.del;
+    const addW = total ? (v.add / total) * 100 : 0;
+    const delW = 100 - addW;
+    const cls = note ? "year-card " + note : "year-card";
+    // Company badges + stacked bar for this year
+    const byCo = yearCompanies[y] || {};
+    const sortedCo = Object.entries(byCo).sort((a, b) => b[1].c - a[1].c);
+    const totalCommits = v.commits || 1;
+    const coStack = sortedCo.map(([co, info]) => {
+      const w = (info.c / totalCommits) * 100;
+      const color = co === "_other" ? "var(--accent)"
+                  : (companyColor(co) || "var(--accent)");
+      const label = co === "_other" ? "Other / personal" : co;
+      return `<div class="seg-co"
+        style="width:${w}%;background:${color};height:100%"
+        title="${label}: ${info.c} commits"></div>`;
+    }).join("");
+    const coBadges = sortedCo.slice(0, 4).map(([co, info]) => {
+      if (co === "_other") return "";
+      const color = companyColor(co);
+      return `<span class="co-badge" style="border-color:${color};color:${color}">${co} · ${info.c}</span>`;
+    }).filter(Boolean).join(" ");
+    return `<div class="${cls}">
+      <div class="y">${y}${note ? `<span class="annot">${note}</span>` : ""}</div>
+      <div class="row"><span>Commits</span>
+        <span class="v">${fmtExact(v.commits)}</span></div>
+      <div class="row"><span>Repos touched</span>
+        <span class="v">${v.repos.length}</span></div>
+      <div class="row"><span style="color:var(--plus)">+lines</span>
+        <span class="v">${fmtExact(v.add)}</span></div>
+      <div class="row"><span style="color:var(--minus)">−lines</span>
+        <span class="v">${fmtExact(v.del)}</span></div>
+      <div class="row"><span>PRs merged / authored</span>
+        <span class="v">${fmtExact(v.prs_merged || 0)} / ${fmtExact(v.prs || 0)}</span></div>
+      <div class="row"><span>Issues filed</span>
+        <span class="v">${fmtExact(v.issues || 0)}</span></div>
+      ${sortedCo.length ? `
+        <div class="row" style="margin-top:8px;color:var(--muted);font-size:11px;">Companies that year</div>
+        <div class="co-stack" title="commits by employer">${coStack}</div>
+        <div class="co-badges">${coBadges}</div>` : ""}
+      <div class="bar">
+        ${total ? `<div class="add" style="width:${addW}%"></div>
+                  <div class="del" style="width:${delW}%"></div>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ---------- repos table ----------
+{
+  const tbody = document.querySelector("#repos tbody");
+  const headers = document.querySelectorAll("#repos th");
+  const rows = Object.entries(DATA.by_repo).map(([name, v]) => ({
+    repo: name,
+    commits: v.commits,
+    add: v.add,
+    del: v.del,
+    first: v.first,
+    last: v.last,
+    span: `${v.first} → ${v.last}`,
+    years: v.years.length,
+    remote: v.remote,
+    local: v.local_paths.length > 0,
+    owned: v.remote && /github\.com[:/]pirate\//.test(v.remote || ""),
+    company: v.company,
+    stars: v.stars || 0,
+    prs: v.prs || 0,
+    prs_merged: v.prs_merged || 0,
+    issues: v.issues || 0,
+    contributed: !!v.contributed,
+  }));
+  let sortKey = "commits";
+  let sortDir = "desc";
+
+  function render(filter) {
+    let r = rows;
+    if (filter) {
+      const f = filter.toLowerCase();
+      r = r.filter(x => x.repo.toLowerCase().includes(f));
+    }
+    r = [...r].sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey];
+      if (typeof av === "string") {
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      return sortDir === "asc" ? (av - bv) : (bv - av);
+    });
+    document.getElementById("repo-count").textContent =
+      `${r.length} repos`;
+    tbody.innerHTML = r.map(x => {
+      const link = x.remote
+        ? (x.remote.includes("github.com")
+            ? `https://github.com/${x.repo}` : x.remote)
+        : null;
+      const repoCell = link
+        ? `<a class="repo-link" href="${link}" target="_blank">${x.repo}</a>`
+        : x.repo;
+      const co = x.company ? companyColor(x.company) : null;
+      const dot = co
+        ? `<span class="co-dot" style="background:${co}" title="${x.company}"></span>`
+        : "";
+      const tags = `<span class="tags">${
+        x.owned ? `<span class="tag owned">owned</span>` : ""
+      }${
+        x.local ? `<span class="tag local">local</span>` : ""
+      }</span>`;
+      const borderStyle = co
+        ? `style="border-left-color:${co}"`
+        : "";
+      const isGh = x.remote && x.remote.includes("github.com");
+      const ghBase = isGh ? `https://github.com/${x.repo}` : null;
+      const commitsCell = x.commits
+        ? (ghBase
+            ? `<a class="repo-link" href="${ghBase}/commits?author=${DATA.user.login}" target="_blank">${fmtExact(x.commits)}</a>`
+            : fmtExact(x.commits))
+        : "";
+      return `<tr class="repo-row">
+        <td ${borderStyle}>${dot}${repoCell} ${tags}</td>
+        <td class="num">${commitsCell}</td>
+        <td class="num plus">${fmtExact(x.add)}</td>
+        <td class="num minus">${fmtExact(x.del)}</td>
+        <td class="num">${x.stars ? `<a class="repo-link" href="${ghBase}/stargazers" target="_blank">${fmtExact(x.stars)}</a>` : ""}</td>
+        <td class="num">${x.prs_merged ? `<a class="repo-link" style="color:var(--plus)" href="${ghBase}/pulls?q=is%3Apr+author%3A${DATA.user.login}+is%3Amerged" target="_blank">${fmtExact(x.prs_merged)}</a>` : ""}</td>
+        <td class="num">${x.prs ? `<a class="repo-link" href="${ghBase}/pulls?q=is%3Apr+author%3A${DATA.user.login}" target="_blank">${fmtExact(x.prs)}</a>` : ""}</td>
+        <td class="num">${x.issues ? `<a class="repo-link" href="${ghBase}/issues?q=is%3Aissue+author%3A${DATA.user.login}" target="_blank">${fmtExact(x.issues)}</a>` : ""}</td>
+        <td>${x.span}</td>
+        <td class="num">${x.years}</td>
+      </tr>`;
+    }).join("");
+    headers.forEach(h => h.removeAttribute("data-sort-active"));
+    const active = [...headers].find(h => h.dataset.sort === sortKey);
+    if (active) active.setAttribute("data-sort-active", sortDir);
+  }
+
+  headers.forEach(h => {
+    h.addEventListener("click", () => {
+      const k = h.dataset.sort;
+      if (sortKey === k) {
+        sortDir = sortDir === "asc" ? "desc" : "asc";
+      } else {
+        sortKey = k;
+        sortDir = (typeof rows[0][k] === "string") ? "asc" : "desc";
+      }
+      render(document.getElementById("repo-filter").value);
+    });
+  });
+  document.getElementById("repo-filter").addEventListener("input", (e) => {
+    render(e.target.value);
+  });
+  render("");
+}
+
+// ---------- footer ----------
+{
+  const gen = new Date(DATA.generated_at).toLocaleString();
+  document.getElementById("footer-note").textContent =
+    `Generated ${gen} · ${fmtExact(DATA.totals.commits)} commits across ` +
+    `${fmtExact(DATA.totals.repos)} repos · counts pirate-authored commits only ` +
+    `(deduped by SHA across all local clones + GitHub API).`;
+}
+</script>
+</body>
+</html>

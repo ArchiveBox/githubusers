@@ -184,17 +184,49 @@ async function handleStatus(
     status: s.status,
     conclusion: s.conclusion,
   }));
+
+  // Surface current GitHub API rate-limit state so the loading page can
+  // explain delays. Uses the same PAT the CI runs with, so the search /
+  // core remaining numbers are very close to what the CI job sees.
+  let rateLimit: any = null;
+  try {
+    const rl = await fetch("https://api.github.com/rate_limit", {
+      headers: {
+        Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
+        "User-Agent": "githubusers-archivebox-io",
+        Accept: "application/vnd.github+json",
+      },
+    });
+    if (rl.ok) {
+      const rd = await rl.json() as any;
+      const r = rd?.resources ?? {};
+      rateLimit = {
+        search: r.search ? {
+          remaining: r.search.remaining,
+          limit: r.search.limit,
+          reset: r.search.reset,    // epoch seconds
+        } : null,
+        core: r.core ? {
+          remaining: r.core.remaining,
+          limit: r.core.limit,
+          reset: r.core.reset,
+        } : null,
+      };
+    }
+  } catch {}
+
   return json({
     ok: true,
     run_id: run.id,
-    run_status: run.status,            // queued | in_progress | completed
-    run_conclusion: run.conclusion,    // success | failure | cancelled | null
+    run_status: run.status,
+    run_conclusion: run.conclusion,
     run_started_at: run.run_started_at,
     run_url: run.html_url,
     job_status: job?.status,
     current_step: steps.find((s: any) => s.status === "in_progress")?.name
                   ?? steps.at(-1)?.name ?? null,
     steps,
+    rate_limit: rateLimit,
   });
 }
 
@@ -272,6 +304,25 @@ function loadingPage(user: string): string {
     border: 1px solid #6e2120; border-radius: 6px; font-size: 13px;
     margin: 10px 0;
   }
+  .ratelimit {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; padding: 8px 12px; margin: 0 0 14px;
+    background: #0d1117; border: 1px solid #21262d;
+    border-radius: 6px; color: #8b949e;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .ratelimit.cooldown {
+    background: #2a1a08; border-color: #6e4c18; color: #ffa657;
+  }
+  .ratelimit .gauge {
+    flex: 1; height: 4px; background: #21262d;
+    border-radius: 2px; overflow: hidden; min-width: 80px;
+  }
+  .ratelimit .gauge > span {
+    display: block; height: 100%; background: #3fb950;
+  }
+  .ratelimit.cooldown .gauge > span { background: #d97706; }
   a { color: #58a6ff; }
   code { background: #21262d; padding: 1px 5px; border-radius: 3px;
          font-size: 90%; font-family: inherit; }
@@ -297,6 +348,8 @@ function loadingPage(user: string): string {
 
     <div class="progress-track"><div class="progress-fill" id="progress"></div></div>
 
+    <div id="ratelimit" class="ratelimit" style="display:none"></div>
+
     <ol class="steps" id="steps"></ol>
 
     <div id="error" class="err" style="display:none"></div>
@@ -320,6 +373,7 @@ const $steps = document.getElementById("steps");
 const $err = document.getElementById("error");
 const $runLink = document.getElementById("run-link");
 const $spinner = document.getElementById("hdr-spinner");
+const $rl = document.getElementById("ratelimit");
 
 const startedAt = Date.now();
 function fmtElapsed(sec) {
@@ -386,6 +440,34 @@ async function checkDeployed() {
   }
 }
 
+function renderRateLimit(rl) {
+  if (!rl || (!rl.search && !rl.core)) {
+    $rl.style.display = "none"; return;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const items = [];
+  for (const kind of ["search", "core"]) {
+    const r = rl[kind];
+    if (!r) continue;
+    const pct = Math.max(0, Math.min(100, (r.remaining / r.limit) * 100));
+    const cooldown = r.remaining < (kind === "search" ? 5 : 100);
+    const secs = Math.max(0, (r.reset || 0) - now);
+    const label = kind === "search" ? "GitHub search" : "GitHub core";
+    items.push(
+      '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:160px">' +
+        '<span>' + label + ' ' + r.remaining + '/' + r.limit + '</span>' +
+        '<div class="gauge"><span style="width:' + pct + '%"></span></div>' +
+        (cooldown ? '<span style="color:#ffa657">resets in ' + secs + 's</span>' : '') +
+      '</div>'
+    );
+  }
+  $rl.innerHTML = items.join("");
+  const lowSearch = rl.search && rl.search.remaining < 5;
+  const lowCore = rl.core && rl.core.remaining < 100;
+  $rl.className = "ratelimit" + (lowSearch || lowCore ? " cooldown" : "");
+  $rl.style.display = "flex";
+}
+
 function renderSteps(status) {
   if (!status || !status.steps) return;
   if (status.run_url) {
@@ -439,6 +521,7 @@ function renderSteps(status) {
       checkDeployed(),
     ]);
     renderSteps(status);
+    if (status) renderRateLimit(status.rate_limit);
     if (deployed) {
       clearInterval(interval);
       $now.textContent = "Dashboard ready — reloading…";

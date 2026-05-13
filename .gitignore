@@ -10,6 +10,7 @@ __pycache__/
 # (pirate's enhanced version, regenerated locally via `python3 generate_stats.py`).
 /stats.html
 /stats_*.html
+!/stats_template.html
 /cloudflare/public/*.html
 !/cloudflare/public/pirate.html
 !/cloudflare/public/404.html
