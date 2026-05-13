@@ -34,6 +34,10 @@ jobs:
         with:
           python-version: "3.13"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Install gh CLI
         run: |
           type -p gh >/dev/null || (
