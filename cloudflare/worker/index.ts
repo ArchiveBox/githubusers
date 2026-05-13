@@ -208,6 +208,110 @@ async function handleProgress(
 }
 
 
+// Fetch the GH-API-derived state used by /api/status. Encapsulated so
+// handleStatus can cache the whole result. On any non-OK GH response,
+// returns { error: ..., status: ... } — callers fall back to a stale
+// cached copy when present.
+async function fetchGhState(env: Env, repo: string): Promise<any> {
+  const ghHeaders = {
+    Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
+    "User-Agent": "githubusers-archivebox-io",
+    Accept: "application/vnd.github+json",
+  };
+  // 1) Recent workflow runs.
+  const r = await fetch(
+    `https://api.github.com/repos/${repo}/actions/runs?per_page=5`,
+    { headers: ghHeaders },
+  );
+  if (!r.ok) {
+    let message = "";
+    try { message = (await r.json() as any).message ?? ""; } catch {}
+    return { error: "gh_api_failed", status: r.status, message };
+  }
+  const data = await r.json() as any;
+  const runs = data.workflow_runs ?? [];
+  const run = runs.find((x: any) => x.status === "in_progress")
+           ?? runs.find((x: any) => x.status === "queued")
+           ?? runs[0];
+  if (!run) return { run: null };
+
+  // 2) Job + steps for the chosen run.
+  const jr = await fetch(
+    `https://api.github.com/repos/${repo}/actions/runs/${run.id}/jobs`,
+    { headers: ghHeaders },
+  );
+  let steps: any[] = [];
+  let job: any = null;
+  if (jr.ok) {
+    const jdata = await jr.json() as any;
+    job = (jdata.jobs ?? [])[0];
+    steps = (job?.steps ?? []).map((s: any) => ({
+      name: s.name,
+      status: s.status,
+      conclusion: s.conclusion,
+    }));
+  }
+
+  // 3) Rate-limit gauge (free endpoint — doesn't count against quota).
+  let rateLimit: any = null;
+  try {
+    const rl = await fetch("https://api.github.com/rate_limit",
+                           { headers: ghHeaders });
+    if (rl.ok) {
+      const rd = await rl.json() as any;
+      const rr = rd?.resources ?? {};
+      rateLimit = {
+        search: rr.search ? {
+          remaining: rr.search.remaining,
+          limit: rr.search.limit,
+          reset: rr.search.reset,
+        } : null,
+        core: rr.core ? {
+          remaining: rr.core.remaining,
+          limit: rr.core.limit,
+          reset: rr.core.reset,
+        } : null,
+      };
+    }
+  } catch {}
+
+  // 4) Tail of recent log output (only when the job is in_progress —
+  // saves a hefty fetch on idle runs).
+  let recentLog: string[] = [];
+  if (job?.id && job.status === "in_progress") {
+    try {
+      const lr = await fetch(
+        `https://api.github.com/repos/${repo}/actions/jobs/${job.id}/logs`,
+        { headers: ghHeaders },
+      );
+      if (lr.ok) {
+        const txt = await lr.text();
+        recentLog = txt
+          .split("\n")
+          .map((l) => l.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s?/, ""))
+          .filter((l) => /^(>>|\s*\[|\s*-{2}|\s*!|\s*resolved\b|\s*scanning |\s*fetching |\s*mining |\s*deploying|\s*search quota|\s*resolving )/i
+                          .test(l))
+          .slice(-20);
+      }
+    } catch {}
+  }
+
+  return {
+    run: {
+      id: run.id,
+      status: run.status,
+      conclusion: run.conclusion,
+      run_started_at: run.run_started_at,
+      html_url: run.html_url,
+    },
+    job: job ? { id: job.id, status: job.status } : null,
+    steps,
+    rate_limit: rateLimit,
+    recent_log: recentLog,
+  };
+}
+
+
 async function handleStatus(
   req: Request,
   env: Env,
@@ -218,111 +322,72 @@ async function handleStatus(
     return json({ error: "invalid user" }, 400);
   }
   const repo = env.GH_REPO ?? "ArchiveBox/githubusers";
-  // Fetch the most recent workflow run regardless of event (dispatch /
-  // push / schedule) — they all run the same mining job, and the
-  // concurrency.group serializes them so the latest run is always the
-  // most relevant.
-  const r = await fetch(
-    `https://api.github.com/repos/${repo}/actions/runs?per_page=5`,
-    {
-      headers: {
-        Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
-        "User-Agent": "githubusers-archivebox-io",
-        Accept: "application/vnd.github+json",
-      },
-    },
-  );
-  if (!r.ok) {
-    return json({ error: "gh api failed", status: r.status }, 502);
-  }
-  const data = await r.json() as any;
-  // Prefer an in_progress / queued run; fall back to most recent overall.
-  const runs = data.workflow_runs ?? [];
-  const run = runs.find((x: any) => x.status === "in_progress")
-           ?? runs.find((x: any) => x.status === "queued")
-           ?? runs[0];
-  if (!run) {
-    return json({ ok: false, status: "no_runs" });
-  }
-  // Get job steps for the run.
-  const jr = await fetch(
-    `https://api.github.com/repos/${repo}/actions/runs/${run.id}/jobs`,
-    {
-      headers: {
-        Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
-        "User-Agent": "githubusers-archivebox-io",
-        Accept: "application/vnd.github+json",
-      },
-    },
-  );
-  const jdata = await jr.json() as any;
-  const job = (jdata.jobs ?? [])[0];
-  const steps = (job?.steps ?? []).map((s: any) => ({
-    name: s.name,
-    status: s.status,
-    conclusion: s.conclusion,
-  }));
 
-  // Surface current GitHub API rate-limit state so the loading page can
-  // explain delays. Uses the same PAT the CI runs with, so the search /
-  // core remaining numbers are very close to what the CI job sees.
-  let rateLimit: any = null;
-  try {
-    const rl = await fetch("https://api.github.com/rate_limit", {
-      headers: {
-        Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
-        "User-Agent": "githubusers-archivebox-io",
-        Accept: "application/vnd.github+json",
-      },
-    });
-    if (rl.ok) {
-      const rd = await rl.json() as any;
-      const r = rd?.resources ?? {};
-      rateLimit = {
-        search: r.search ? {
-          remaining: r.search.remaining,
-          limit: r.search.limit,
-          reset: r.search.reset,    // epoch seconds
-        } : null,
-        core: r.core ? {
-          remaining: r.core.remaining,
-          limit: r.core.limit,
-          reset: r.core.reset,
-        } : null,
-      };
-    }
-  } catch {}
-
-  // Tail the job's live log for richer progress info (e.g. the Python
-  // script's `>> [N/M] ...` lines). The GH API redirects to a signed
-  // download URL — fetch() follows by default.
-  let recentLog: string[] = [];
-  if (job?.id) {
-    try {
-      const lr = await fetch(
-        `https://api.github.com/repos/${repo}/actions/jobs/${job.id}/logs`,
-        {
-          headers: {
-            Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
-            "User-Agent": "githubusers-archivebox-io",
-            Accept: "application/vnd.github+json",
-          },
-        },
+  // GH API state (workflow runs, jobs, logs, rate-limit) is the same for
+  // every visitor / user — cache it globally for 15s. Loading pages poll
+  // every 4s; without this cache we burn ~45 GH API requests per minute
+  // per active visitor, which exhausts the 5000/hr PAT limit fast.
+  const ghStateKey = new Request(
+    `https://internal-status.invalid/gh-state-v1`,
+  );
+  let ghState: any = null;
+  let stale = false;
+  const cached = await caches.default.match(ghStateKey);
+  if (cached) {
+    try { ghState = await cached.json(); } catch {}
+  }
+  if (!ghState) {
+    ghState = await fetchGhState(env, repo);
+    if (ghState.error) {
+      // Couldn't reach GH — fall back to whatever we last saw (if any).
+      // Without a fallback we serve {error:"..."} which makes the
+      // loading page render nothing.
+      const stale_resp = await caches.default.match(
+        new Request(`https://internal-status.invalid/gh-state-stale-v1`),
       );
-      if (lr.ok) {
-        const txt = await lr.text();
-        // Each line is "<ISO timestamp> <message>"; strip timestamp +
-        // filter to lines that look like Python script output.
-        const interesting = txt
-          .split("\n")
-          .map((l) => l.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s?/, ""))
-          .filter((l) => /^(>>|\s*\[|\s*-{2}|\s*!|\s*resolved\b|\s*scanning |\s*fetching |\s*mining |\s*deploying|\s*search quota|\s*resolving )/i
-                          .test(l))
-          .slice(-20);
-        recentLog = interesting;
+      if (stale_resp) {
+        try { ghState = await stale_resp.json(); stale = true; } catch {}
       }
-    } catch {}
+      if (!ghState || ghState.error) {
+        return json({
+          ok: false,
+          error: "gh_unreachable",
+          gh_status: ghState?.status,
+          gh_message: ghState?.message,
+        }, 200);
+      }
+    } else {
+      // Cache for 15s (frequent polling) and keep a separate "stale"
+      // copy that lives much longer (1h) so we can fall back when GH
+      // rate-limits us.
+      await caches.default.put(
+        ghStateKey,
+        new Response(JSON.stringify(ghState), {
+          headers: {
+            "Cache-Control": "max-age=15",
+            "Content-Type": "application/json",
+          },
+        }),
+      );
+      await caches.default.put(
+        new Request(`https://internal-status.invalid/gh-state-stale-v1`),
+        new Response(JSON.stringify(ghState), {
+          headers: {
+            "Cache-Control": "max-age=3600",
+            "Content-Type": "application/json",
+          },
+        }),
+      );
+    }
   }
+  const run = ghState.run;
+  if (!run) {
+    return json({ ok: false, status: "no_runs", stale });
+  }
+  const steps = ghState.steps ?? [];
+  const rateLimit = ghState.rate_limit ?? null;
+  const recentLog: string[] = ghState.recent_log ?? [];
+  const job = ghState.job;
 
   // Read the latest progress update posted by the running Python script.
   let progress: any = null;
@@ -580,7 +645,15 @@ async function fetchStatus() {
     const r = await fetch("/api/status?user=" + encodeURIComponent(USER),
       { cache: "no-store" });
     if (!r.ok) return null;
-    return await r.json();
+    const j = await r.json();
+    // Worker hit a GH API outage / rate limit. Surface a friendly note
+    // instead of silently rendering nothing.
+    if (j && j.error === "gh_unreachable") {
+      $now.textContent = "Waiting on GitHub API… (" +
+        (j.gh_status || "unreachable") + ") — will retry";
+      return null;
+    }
+    return j;
   } catch (e) { return null; }
 }
 
@@ -722,7 +795,7 @@ function renderSteps(status) {
       $now.textContent = "Dashboard ready — reloading…";
       setTimeout(() => location.reload(), 500);
     }
-  }, 4000);
+  }, 8000);
 })();
 </script>
 </body>
