@@ -55,6 +55,20 @@ jobs:
             stats-cache-v1-${{ inputs.user || 'full' }}-
             stats-cache-v1-
 
+      # Persist deployed user HTMLs across runs so that single-user
+      # mining doesn't wipe other users from the CF bucket when wrangler
+      # replaces the assets dir on deploy. Single shared key — every run
+      # restores the latest snapshot of all deployed dashboards, adds /
+      # refreshes its own user(s), and writes back the full set.
+      - name: Restore deployed dashboards
+        uses: actions/cache@v4
+        with:
+          path: |
+            cloudflare/public/*.html
+          key: deployed-htmls-v1-${{ github.run_id }}
+          restore-keys: |
+            deployed-htmls-v1-
+
       - name: Install gh CLI
         run: |
           type -p gh >/dev/null || (
@@ -75,7 +89,7 @@ jobs:
           mkdir -p cloudflare/public
           # Build the list of users we'll mine THIS run.
           if [ -n "$INPUT_USER" ]; then
-            echo "Single-user mine: $INPUT_USER"
+            echo "Single-user mine (forced): $INPUT_USER"
             # Persist new users into users.txt so future scheduled runs
             # include them.
             if ! grep -qiE "^${INPUT_USER}$" cloudflare/users.txt; then
@@ -84,13 +98,28 @@ jobs:
             fi
             echo "$INPUT_USER" > /tmp/targets.txt
           else
-            echo "Full mine of users.txt"
-            grep -vE '^\s*(#|$)' cloudflare/users.txt > /tmp/targets.txt
+            # Full mine: only mine users that don't have a deployed
+            # dashboard yet. Once a dashboard exists, it stays put
+            # until someone clicks the manual "Refresh" button (which
+            # dispatches with inputs.user set).
+            echo "Full mine of users.txt (skip already-deployed)"
+            : > /tmp/targets.txt
+            while IFS= read -r u || [ -n "$u" ]; do
+              u="${u%%#*}"
+              u="${u//[[:space:]]/}"
+              [ -z "$u" ] && continue
+              if [ -f "cloudflare/public/${u}.html" ]; then
+                echo "  skip @$u — dashboard already deployed"
+                continue
+              fi
+              echo "$u" >> /tmp/targets.txt
+            done < cloudflare/users.txt
           fi
           # Pre-stage pirate's enhanced version
           if [ -f stats.html ]; then
             cp stats.html cloudflare/public/pirate.html
           fi
+          echo "Targets:"
           cat /tmp/targets.txt
 
       - name: Mine each user (with live in-progress deploys)

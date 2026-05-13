@@ -63,9 +63,34 @@ async function handleRefresh(
   if (req.method !== "POST" && req.method !== "GET") {
     return new Response("method not allowed", { status: 405 });
   }
+  // Manual refresh button passes ?force=1 to bypass the "already deployed"
+  // short-circuit. Without force, a request for a user whose dashboard
+  // already exists is a no-op (we want pages to stay valid indefinitely
+  // once mined).
+  const force = url.searchParams.get("force") === "1";
 
-  // Dedup: don't re-dispatch within 8 min of the most recent one for this
-  // user. Uses Workers Cache API — no KV/DO binding needed.
+  // Short-circuit if the static dashboard is already deployed. The Worker
+  // fallback only sends people here when the asset is missing, so this
+  // mainly catches direct /api/refresh callers (bots, refresh button
+  // without force).
+  if (!force) {
+    const probe = new URL(url.toString());
+    probe.pathname = `/${user}.html`;
+    const probeResp = await env.ASSETS.fetch(
+      new Request(probe.toString(), { method: "GET" }),
+    );
+    if (probeResp.status === 200) {
+      return json({
+        ok: true,
+        user,
+        status: "already_deployed",
+        message: "Dashboard already exists. Pass ?force=1 to re-mine.",
+      }, 200);
+    }
+  }
+
+  // Dedup: don't re-dispatch within ~6 hours of the most recent one for
+  // this user. Uses Workers Cache API — no KV/DO binding needed.
   const cache = caches.default;
   const dedupKey = new Request(
     `https://internal-dedup.invalid/dispatch/${user}`,
@@ -527,6 +552,12 @@ async function dispatch() {
     }
     if (!r.ok) {
       showError("Dispatch failed (HTTP " + r.status + "): " + (data.error || "unknown"));
+      return false;
+    }
+    if (data.status === "already_deployed") {
+      // Race: dashboard came back online between page render and dispatch.
+      $now.textContent = "Dashboard already deployed — reloading…";
+      setTimeout(() => location.reload(), 400);
       return false;
     }
     $now.textContent = data.status === "already_running"

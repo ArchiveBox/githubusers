@@ -596,6 +596,22 @@
     text-align: center;
     margin-top: 24px;
   }
+  .refresh-btn {
+    display: inline-block; margin-left: 10px;
+    padding: 3px 10px; border-radius: 4px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; font: inherit;
+    font-size: 11px;
+  }
+  .refresh-btn:hover:not(:disabled) {
+    color: var(--fg); border-color: var(--accent);
+  }
+  .refresh-btn:disabled { opacity: 0.6; cursor: progress; }
+  .refresh-msg {
+    font-size: 11px; color: var(--muted); margin-top: 6px;
+    text-align: center;
+  }
+  .refresh-msg.err { color: #f85149; }
   /* Mining-in-progress banner (shown only when DATA.mining_status !== "complete") */
   #mining-banner {
     position: sticky; top: 0; z-index: 100;
@@ -758,6 +774,7 @@
 </section>
 
 <div class="footer-note" id="footer-note"></div>
+<div class="refresh-msg" id="refresh-msg"></div>
 
 </main>
 
@@ -1496,10 +1513,50 @@ if (DATA.totals.first_day && DATA.totals.last_day) {
 // ---------- footer ----------
 {
   const gen = new Date(DATA.generated_at).toLocaleString();
-  document.getElementById("footer-note").textContent =
+  const footer = document.getElementById("footer-note");
+  footer.textContent =
     `Generated ${gen} · ${fmtExact(DATA.totals.commits)} commits across ` +
-    `${fmtExact(DATA.totals.repos)} repos · counts pirate-authored commits only ` +
-    `(deduped by SHA across all local clones + GitHub API).`;
+    `${fmtExact(DATA.totals.repos)} repos · deduped by SHA across local clones + GitHub API.`;
+  // Manual refresh button — dashboards are never auto-re-mined; this is
+  // the only path to triggering a fresh mine for the displayed user.
+  const btn = document.createElement("button");
+  btn.className = "refresh-btn";
+  btn.type = "button";
+  btn.textContent = "↻ Refresh stats";
+  btn.title = "Re-run the GitHub mining job for @" + DATA.user.login;
+  const msg = document.getElementById("refresh-msg");
+  btn.addEventListener("click", async () => {
+    if (!confirm("Re-mine @" + DATA.user.login + "? This kicks off a fresh "
+                 + "GitHub Actions run (~5-15 min). The current dashboard "
+                 + "stays visible until the new one finishes deploying."))
+      return;
+    btn.disabled = true;
+    msg.classList.remove("err");
+    msg.textContent = "Dispatching mining job…";
+    try {
+      const r = await fetch(
+        "/api/refresh?user=" + encodeURIComponent(DATA.user.login)
+        + "&force=1",
+        { method: "POST" },
+      );
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msg.classList.add("err");
+        msg.textContent = "Dispatch failed: " + (d.error || ("HTTP " + r.status));
+        btn.disabled = false;
+        return;
+      }
+      msg.textContent = d.status === "already_running"
+        ? "A mining run is already in progress — check back in ~10 min."
+        : "Mining dispatched. This dashboard stays visible until the new "
+          + "run finishes (~5-15 min); reload then to see fresh stats.";
+    } catch (e) {
+      msg.classList.add("err");
+      msg.textContent = "Network error: " + e.message;
+      btn.disabled = false;
+    }
+  });
+  footer.appendChild(btn);
 }
 </script>
 </body>
