@@ -2395,11 +2395,13 @@ def report_progress(phase: str, message: str = "", **extra) -> None:
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {PROGRESS_TOKEN}",
-                # Cloudflare WAF blocks empty User-Agents — give it a
-                # real-looking one.
+                # Cloudflare's Bot Fight Mode aggressively blocks
+                # Python-urllib UAs (especially from AWS IP ranges where
+                # GitHub Actions runs). Mozilla-style UA gets through.
                 "User-Agent": (
-                    "generate_stats.py "
-                    "(github.com/ArchiveBox/githubusers)"
+                    "Mozilla/5.0 (compatible; "
+                    "ArchiveBox-githubusers-bot/1.0; "
+                    "+https://github.com/ArchiveBox/githubusers)"
                 ),
             },
         )
