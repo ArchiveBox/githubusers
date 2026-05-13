@@ -40,10 +40,9 @@ jobs:
             sudo apt-get update -qq && sudo apt-get install -y gh
           )
 
-      - name: Authenticate gh
-        env:
-          GH_TOKEN: ${{ secrets.GH_MINING_TOKEN }}
-        run: echo "$GH_TOKEN" | gh auth login --with-token
+      # gh authenticates via the GH_TOKEN environment variable (which we
+      # already set on each step that calls it); no explicit `gh auth login`
+      # step needed.
 
       - name: Determine target users
         id: targets
@@ -77,6 +76,7 @@ jobs:
         working-directory: .
         env:
           NO_COLOR: "1"
+          GH_TOKEN: ${{ secrets.GH_MINING_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
