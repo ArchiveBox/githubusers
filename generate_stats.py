@@ -43,6 +43,15 @@ from typing import Iterable, Iterator
 GH_LOGIN = "pirate"
 GH_NAME = "Nick Sweeting"
 
+# Optional: when set, the script POSTs phase updates to this URL so the
+# live "mining…" page can show real-time progress. The Worker's
+# /api/progress endpoint checks the Bearer token against GH_DISPATCH_TOKEN.
+PROGRESS_URL = os.environ.get(
+    "STATS_PROGRESS_URL",
+    "https://githubusers.archivebox.io/api/progress",
+)
+PROGRESS_TOKEN = os.environ.get("STATS_PROGRESS_TOKEN", "")
+
 # Known author emails pirate has used over the years.
 PIRATE_EMAILS = {
     "nikisweeting@gmail.com",
@@ -2364,6 +2373,35 @@ def _collect_all_records() -> list[dict]:
     return all_recs
 
 
+def report_progress(phase: str, message: str = "", **extra) -> None:
+    """POST a small JSON progress update to the live /api/progress endpoint
+    so the user's loading page can render real-time phase info. Best-effort
+    — failures are silent."""
+    if not PROGRESS_URL or not PROGRESS_TOKEN:
+        return
+    try:
+        import urllib.request, urllib.error
+        payload = {
+            "phase": phase,
+            "message": message,
+            "ts": time.time(),
+            "user": GH_LOGIN,
+            **extra,
+        }
+        data = json.dumps(payload).encode()
+        url = f"{PROGRESS_URL}?user={GH_LOGIN}"
+        req = urllib.request.Request(
+            url, data=data, method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {PROGRESS_TOKEN}",
+            },
+        )
+        urllib.request.urlopen(req, timeout=5).read()
+    except Exception:
+        pass
+
+
 def _render_now(*, mining_status: str = "complete") -> dict:
     """Aggregate from cache and write stats.html. Returns aggregate dict.
     `mining_status` is embedded in the output so the live-mining UI knows
@@ -2539,6 +2577,8 @@ def main() -> int:
         print(f"Wrote {OUTPUT_FILE}")
         return 0
 
+    report_progress("starting", f"Mining @{GH_LOGIN}")
+
     # ---- Phase 1: local filesystem mining --------------------------------
     if not args.no_local:
         print(">> [1/7] Walking filesystem for local git repos ...", file=sys.stderr)
@@ -2551,8 +2591,11 @@ def main() -> int:
 
     # ---- Phase 2: bare-clone owned/org GH repos we don't have locally ----
     if not args.no_clone:
+        report_progress("phase-2-listing", "Listing accessible GitHub repos")
         print(">> [2/7] Listing accessible GitHub repos ...", file=sys.stderr)
         accessible = list_accessible_repos()
+        report_progress("phase-2-cloning", f"{len(accessible)} repos accessible — cloning",
+                        repos_accessible=len(accessible))
         print(f">> {len(accessible)} accessible repos via API", file=sys.stderr)
         # For generic --user runs, derive company patterns from the user's
         # top org owners so the dashboard still has some color coding.
@@ -2620,14 +2663,19 @@ def main() -> int:
     except Exception:
         pass
     if not args.no_prs:
+        report_progress("phase-4-prs", "Searching PRs + issues authored by user")
         print(">> [4/7] Searching PRs + issues by the user ...", file=sys.stderr)
         try:
             prs, issues = list_prs_and_issues()
+            report_progress("phase-4-prs-done",
+                            f"Found {len(prs)} PRs, {len(issues)} issues",
+                            prs=len(prs), issues=len(issues))
             print(f">> {len(prs)} PRs, {len(issues)} issues", file=sys.stderr)
         except Exception as e:
             print(f"  ! PR/issue search failed: {e}", file=sys.stderr)
 
         # ---- Phase 5: PR-detail fetch (lines added/removed) --------------
+        report_progress("phase-5-pr-details", "Fetching per-PR additions/deletions")
         print(">> [5/7] Fetching merged-PR additions/deletions ...",
               file=sys.stderr)
         try:
@@ -2637,6 +2685,8 @@ def main() -> int:
             print(f"  ! PR-detail fetch failed: {e}", file=sys.stderr)
 
         # ---- Phase 5a: per-PR commits (handles non-GH-linked author emails)
+        report_progress("phase-5a-pr-commits",
+                        "Walking each merged PR's commit list")
         try:
             existing_shas: set[str] = {r.get("sha")
                                        for r in _collect_all_records()
@@ -2697,6 +2747,8 @@ def main() -> int:
 
     # ---- Phase 6: star counts (full coverage) ----------------------------
     if not args.no_stars:
+        report_progress("phase-6-stars",
+                        "Fetching star counts + total-commits per repo")
         print(">> [6/7] Fetching star counts for all repos ...",
               file=sys.stderr)
         # Collect every canonical repo name in our data + every repo in
@@ -2743,6 +2795,9 @@ def main() -> int:
     print(f">> DONE: {t['commits']} commits, {t['repos']} repos, "
           f"{t['stars']:,}⭐ {t['prs_merged']}/{t['prs']} PRs merged, "
           f"{t['issues']} issues", file=sys.stderr)
+    report_progress("done", "Mining complete",
+                    commits=t['commits'], repos=t['repos'],
+                    stars=t['stars'], prs=t['prs'], issues=t['issues'])
     print(f"Wrote {OUTPUT_FILE}")
     return 0
 

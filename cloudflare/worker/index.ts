@@ -27,6 +27,9 @@ export default {
     if (url.pathname === "/api/status") {
       return handleStatus(req, env, url);
     }
+    if (url.pathname === "/api/progress") {
+      return handleProgress(req, env, url);
+    }
 
     // -- Static assets ----------------------------------------------------
     const assetResp = await env.ASSETS.fetch(req);
@@ -135,6 +138,46 @@ function json(obj: unknown, status = 200): Response {
 }
 
 
+async function handleProgress(
+  req: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
+  // POST { phase, message, totals } — keyed by ?user=X — read back via
+  // /api/status. Auth: Bearer header must match GH_DISPATCH_TOKEN
+  // (the same token the Action gets from secrets) so random clients
+  // can't spam fake progress.
+  if (req.method !== "POST") {
+    return json({ error: "POST only" }, 405);
+  }
+  const auth = req.headers.get("Authorization") ?? "";
+  if (!auth.startsWith("Bearer ") ||
+      auth.slice(7) !== env.GH_DISPATCH_TOKEN) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const user = url.searchParams.get("user")?.trim();
+  if (!user || !VALID_LOGIN.test(user)) {
+    return json({ error: "invalid user" }, 400);
+  }
+  const body = await req.text();
+  // Sanity cap — small JSON only.
+  if (body.length > 4096) return json({ error: "too large" }, 413);
+  try { JSON.parse(body); } catch { return json({ error: "bad json" }, 400); }
+  const cache = caches.default;
+  await cache.put(
+    new Request(`https://internal-progress.invalid/${user}`),
+    new Response(body, {
+      headers: {
+        "Cache-Control": "max-age=3600",
+        "Content-Type": "application/json",
+        "X-Received-At": new Date().toISOString(),
+      },
+    }),
+  );
+  return json({ ok: true });
+}
+
+
 async function handleStatus(
   req: Request,
   env: Env,
@@ -215,6 +258,49 @@ async function handleStatus(
     }
   } catch {}
 
+  // Tail the job's live log for richer progress info (e.g. the Python
+  // script's `>> [N/M] ...` lines). The GH API redirects to a signed
+  // download URL — fetch() follows by default.
+  let recentLog: string[] = [];
+  if (job?.id) {
+    try {
+      const lr = await fetch(
+        `https://api.github.com/repos/${repo}/actions/jobs/${job.id}/logs`,
+        {
+          headers: {
+            Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
+            "User-Agent": "githubusers-archivebox-io",
+            Accept: "application/vnd.github+json",
+          },
+        },
+      );
+      if (lr.ok) {
+        const txt = await lr.text();
+        // Each line is "<ISO timestamp> <message>"; strip timestamp +
+        // filter to lines that look like Python script output.
+        const interesting = txt
+          .split("\n")
+          .map((l) => l.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s?/, ""))
+          .filter((l) => /^(>>|\s*\[|\s*-{2}|\s*!|\s*resolved\b|\s*scanning |\s*fetching |\s*mining |\s*deploying|\s*search quota|\s*resolving )/i
+                          .test(l))
+          .slice(-20);
+        recentLog = interesting;
+      }
+    } catch {}
+  }
+
+  // Read the latest progress update posted by the running Python script.
+  let progress: any = null;
+  try {
+    const pres = await caches.default.match(
+      new Request(`https://internal-progress.invalid/${user}`),
+    );
+    if (pres) {
+      progress = await pres.json();
+      progress.received_at = pres.headers.get("X-Received-At");
+    }
+  } catch {}
+
   return json({
     ok: true,
     run_id: run.id,
@@ -227,6 +313,8 @@ async function handleStatus(
                   ?? steps.at(-1)?.name ?? null,
     steps,
     rate_limit: rateLimit,
+    recent_log: recentLog,
+    progress,
   });
 }
 
@@ -323,6 +411,30 @@ function loadingPage(user: string): string {
     display: block; height: 100%; background: #3fb950;
   }
   .ratelimit.cooldown .gauge > span { background: #d97706; }
+  .phase-msg {
+    background: #0e2640; border: 1px solid #1f4d7a;
+    color: #58a6ff; padding: 12px 14px; border-radius: 6px;
+    margin: 0 0 14px; font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .phase-msg .pm-msg { flex: 1; min-width: 200px; }
+  .phase-msg .pm-counts {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: #8b949e;
+  }
+  .phase-msg .pm-counts strong { color: #c9d1d9; }
+  .livelog {
+    background: #0d1117; border: 1px solid #21262d;
+    border-radius: 6px; padding: 10px 12px; margin: 14px 0 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: #c9d1d9;
+    max-height: 180px; overflow-y: auto; line-height: 1.45;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .livelog .l-hdr { color: #58a6ff; }
+  .livelog .l-warn { color: #ffa657; }
+  .livelog .l-err { color: #f85149; }
   a { color: #58a6ff; }
   code { background: #21262d; padding: 1px 5px; border-radius: 3px;
          font-size: 90%; font-family: inherit; }
@@ -348,9 +460,13 @@ function loadingPage(user: string): string {
 
     <div class="progress-track"><div class="progress-fill" id="progress"></div></div>
 
+    <div id="phase-msg" class="phase-msg" style="display:none"></div>
+
     <div id="ratelimit" class="ratelimit" style="display:none"></div>
 
     <ol class="steps" id="steps"></ol>
+
+    <pre id="livelog" class="livelog" style="display:none"></pre>
 
     <div id="error" class="err" style="display:none"></div>
 
@@ -374,6 +490,8 @@ const $err = document.getElementById("error");
 const $runLink = document.getElementById("run-link");
 const $spinner = document.getElementById("hdr-spinner");
 const $rl = document.getElementById("ratelimit");
+const $log = document.getElementById("livelog");
+const $pmsg = document.getElementById("phase-msg");
 
 const startedAt = Date.now();
 function fmtElapsed(sec) {
@@ -438,6 +556,38 @@ async function checkDeployed() {
   } catch (e) {
     return false;
   }
+}
+
+function renderProgress(p) {
+  if (!p || !p.phase) { $pmsg.style.display = "none"; return; }
+  const countKeys = ["repos", "commits", "prs", "issues", "stars",
+                     "repos_accessible"];
+  const counts = countKeys
+    .filter(k => p[k] != null)
+    .map(k => '<strong>' + p[k] + '</strong> ' + k);
+  $pmsg.innerHTML =
+    '<div class="pm-msg">' +
+      (p.message || p.phase) +
+      ' <code style="font-size:10px;color:#8b949e;margin-left:6px">' +
+      p.phase + '</code></div>' +
+    (counts.length ? '<div class="pm-counts">' + counts.join(" · ") + '</div>' : "");
+  $pmsg.style.display = "flex";
+}
+
+function renderLog(lines) {
+  if (!Array.isArray(lines) || lines.length === 0) {
+    $log.style.display = "none"; return;
+  }
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  $log.innerHTML = lines.map(l => {
+    const cls = /^!|fail|error|❌/i.test(l) ? "l-err"
+              : /quota|warn|^  !/i.test(l) ? "l-warn"
+              : /^>>/.test(l) ? "l-hdr"
+              : "";
+    return '<span class="' + cls + '">' + esc(l) + '</span>';
+  }).join("\n");
+  $log.style.display = "block";
+  $log.scrollTop = $log.scrollHeight;
 }
 
 function renderRateLimit(rl) {
@@ -521,7 +671,11 @@ function renderSteps(status) {
       checkDeployed(),
     ]);
     renderSteps(status);
-    if (status) renderRateLimit(status.rate_limit);
+    if (status) {
+      renderProgress(status.progress);
+      renderRateLimit(status.rate_limit);
+      renderLog(status.recent_log);
+    }
     if (deployed) {
       clearInterval(interval);
       $now.textContent = "Dashboard ready — reloading…";

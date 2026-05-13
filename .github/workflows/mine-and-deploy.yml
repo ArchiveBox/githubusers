@@ -83,6 +83,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_MINING_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Posted by generate_stats.py to /api/progress so the Worker's
+          # loading page can render real-time phase info.
+          STATS_PROGRESS_TOKEN: ${{ secrets.GH_MINING_TOKEN }}
         run: |
           set -e
 
