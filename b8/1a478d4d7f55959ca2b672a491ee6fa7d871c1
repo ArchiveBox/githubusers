@@ -1,0 +1,23 @@
+cloudflare/worker/index.ts
+  s_18da96ec8c0224::t_d044ecc12ab07c 36-40
+  s_18da96ec8c0224::t_be5834a92f64fd 431-561
+  s_18da96ec8c0224::t_1d6768c4887bef 34-35,41-42
+.github/workflows/mine-and-deploy.yml
+  s_18da96ec8c0224::t_19004a35dcbcc2 218-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "b81a478d4d7f55959ca2b672a491ee6fa7d871c1",
+  "prompts": {},
+  "sessions": {
+    "s_18da96ec8c0224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "106f0a9a-2d47-4cb2-9490-c81a93b36371",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
