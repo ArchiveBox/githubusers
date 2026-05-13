@@ -1,0 +1,21 @@
+cloudflare/wrangler.toml
+  s_18da96ec8c0224::t_24e610ff84aec0 14-18,24
+cloudflare/worker/index.ts
+  s_18da96ec8c0224::t_1f05c870c51630 38-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "af9865bf3f4af2ed0c5e99efe88889b5d8c58274",
+  "prompts": {},
+  "sessions": {
+    "s_18da96ec8c0224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "106f0a9a-2d47-4cb2-9490-c81a93b36371",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
