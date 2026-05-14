@@ -1,0 +1,24 @@
+cloudflare/public/pirate.html
+  ai_agent 783
+generate_stats.py
+  s_18da96ec8c0224::t_7b7e597ef308dd 2556
+  s_18da96ec8c0224::t_4931c758df80b3 2114-2125
+  s_18da96ec8c0224::t_3ecd6dfb989537 1226-1228,1236-1239
+  s_18da96ec8c0224::t_bd6127e1f3b4ac 984-991
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "c8d1ecfa12411cdfd4fe98e571608ceb0ce9929f",
+  "prompts": {},
+  "sessions": {
+    "s_18da96ec8c0224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "106f0a9a-2d47-4cb2-9490-c81a93b36371",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
