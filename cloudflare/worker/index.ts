@@ -840,7 +840,7 @@ function renderLog(lines) {
               : /^>>/.test(l) ? "l-hdr"
               : "";
     return '<span class="' + cls + '">' + esc(l) + '</span>';
-  }).join("\n");
+  }).join("\\n");
   $log.style.display = "block";
   $log.scrollTop = $log.scrollHeight;
 }
