@@ -85,6 +85,39 @@ jobs:
             cloudflare/public/index.html \
             cloudflare/public/404.html
 
+      # Bootstrap from the live CF bucket: any user that's already
+      # deployed in production but missing locally (because the previous
+      # run was cancelled at the 6h cap and its post-step cache save
+      # didn't run) gets downloaded here. Without this, the next run
+      # would re-mine ~all users every time.
+      - name: Bootstrap dashboards from deployed bucket
+        run: |
+          set +e
+          deployed_json=$(curl -sSL --max-time 15 \
+            "https://githubusers.archivebox.io/deployed.json" 2>/dev/null)
+          if [ -z "$deployed_json" ] || ! echo "$deployed_json" | python3 -c "import json,sys;json.load(sys.stdin)" >/dev/null 2>&1; then
+            echo "No deployed.json available — skipping bootstrap"
+            exit 0
+          fi
+          users=$(echo "$deployed_json" \
+            | python3 -c "import json,sys; [print(u) for u in json.load(sys.stdin)]")
+          n=0
+          for u in $users; do
+            f="cloudflare/public/${u}.html"
+            # Don't clobber pirate.html (committed/authoritative).
+            [ "$u" = "pirate" ] && continue
+            if [ ! -s "$f" ]; then
+              if curl -sSL --max-time 30 --fail \
+                  "https://githubusers.archivebox.io/${u}.html" \
+                  -o "$f" 2>/dev/null; then
+                n=$((n + 1))
+              else
+                rm -f "$f"
+              fi
+            fi
+          done
+          echo "Bootstrapped $n dashboards from deployed bucket"
+
       - name: Install gh CLI
         run: |
           type -p gh >/dev/null || (
