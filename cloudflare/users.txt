@@ -102,3 +102,11 @@ laithrw
 # @ArchiveBox members
 benmuth
 LarsenCundric
+
+# browser-use/browser-use top-10 contributors
+MagMueller
+mertunsall
+ShawnPana
+sauravpanda
+reformedot
+kalil0321
