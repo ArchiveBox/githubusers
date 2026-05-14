@@ -981,6 +981,14 @@ MANUAL_CANONICAL = {
     "pirate/cmdty.ncm-ui": "Monadical-Inc/cmdty.ncm-ui",
 }
 
+# Repos to fully exclude from this user's stats — forks where the user
+# never actually contributed (commits, PRs, issues, lines all dropped).
+# Compared against the canonical name AFTER alias resolution.
+EXCLUDE_REPOS = {
+    "WeKruit/Hand-X",
+    "leonardojyanez/redux_time",
+}
+
 
 _RENAME_CACHE_FILE = None  # set in resolve_canonical_name
 def resolve_canonical_name(full_name: str) -> str:
@@ -1215,17 +1223,20 @@ def dedupe_commits(records: Iterable[dict]) -> list[dict]:
         if cur_total > prev_total:
             by_sha[sha] = r
 
-    # Rewrite repo attribution to canonical (alias map).
+    # Rewrite repo attribution to canonical (alias map), then drop any
+    # records that resolve to a manually-excluded repo.
+    kept: list[dict] = []
     for r in by_sha.values():
         canon_input = repo_canonical(r)
         target = alias.get(canon_input, canon_input)
         if target != canon_input:
             r["repo"] = target
-            # Use a synthetic remote pointing to the canonical owner/repo
-            # if it looks like a github full_name.
             if "/" in target and not target.startswith("http"):
                 r["repo_remote"] = f"https://github.com/{target}.git"
-    return list(by_sha.values())
+        if target in EXCLUDE_REPOS or canon_input in EXCLUDE_REPOS:
+            continue
+        kept.append(r)
+    return kept
 
 
 def repo_canonical(record: dict) -> str:
@@ -2100,6 +2111,18 @@ def aggregate(records: list[dict]) -> dict:
             pr_merged_del_repo.pop(full, None)
     rename_cache_file.write_text(json.dumps(rename_cache))
 
+    # Drop manually-excluded repos from PR/issue counts (forks the user
+    # never actually contributed to, so the GH search picked them up
+    # because of an old fork-relationship that no longer represents
+    # real attribution).
+    for excluded in EXCLUDE_REPOS:
+        pr_repo.pop(excluded, None)
+        pr_merged_repo.pop(excluded, None)
+        iss_repo.pop(excluded, None)
+        pr_merged_add_repo.pop(excluded, None)
+        pr_merged_del_repo.pop(excluded, None)
+        by_repo.pop(excluded, None)
+
     # Now create virtual by_repo entries (PR/issue-only contributions).
     for full in set(pr_repo) | set(iss_repo):
         if "/" not in full:
@@ -2530,6 +2553,7 @@ def auto_derive_config_for_user(login: str) -> None:
     )
 
     MANUAL_CANONICAL.clear()
+    EXCLUDE_REPOS.clear()  # pirate-specific fork exclusions
     REPO_JOB_PATTERNS.clear()
     SEARCH_DIRS[:] = []  # generic users — no local mining by default
     print(f"  auto-config: @{login} ({GH_NAME}) "
